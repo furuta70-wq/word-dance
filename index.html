@@ -505,29 +505,47 @@ h1{
 
     const actors = [];
     const centerY = H * 0.50;
-    const sizeRatios = [1, 0.60, 0.35, 0.26];
-    const rowSpacingMul = [0, 0.48, 0.42, 0.38];
+    const sizeRatios = [1, 0.60, 0.35, 0.24];
+    const backdropScale = 1.30;
 
     const firstLine = lines[0];
     const firstTargetWidth = W * 0.78;
     const firstSizeBase = fitBackdropFontSize(firstLine, firstTargetWidth);
-    const titleSize = firstSizeBase * 0.90;
+    const titleSize = firstSizeBase * 0.90 * backdropScale;
 
     const sizes = lines.map((line, row) => {
       if(row === 0) return titleSize;
-      const ratio = sizeRatios[row] || Math.max(0.20, 0.26 - (row - 3) * 0.05);
+      const ratio = sizeRatios[row] || Math.max(0.18, 0.24 - (row - 3) * 0.04);
       return titleSize * ratio;
     });
 
-    const yPositions = [];
-    yPositions[0] = centerY;
+    const rowMetrics = sizes.map((size, row) => ({
+      top: size * (row === 0 ? 0.46 : 0.44),
+      bottom: size * (row === 0 ? 0.42 : 0.40)
+    }));
+
+    const gaps = [];
     for(let row = 1; row < lines.length; row++){
       const prevSize = sizes[row - 1];
       const curSize = sizes[row];
-      const prevHalf = prevSize * 0.68;
-      const curHalf = curSize * 0.78;
-      const gap = Math.max(H * 0.028, prevSize * rowSpacingMul[row] + curSize * 0.72);
-      yPositions[row] = yPositions[row - 1] + prevHalf + curHalf + gap;
+      const gap = Math.max(
+        4,
+        H * 0.003,
+        Math.min(prevSize, curSize) * (row === 1 ? 0.07 : 0.09)
+      );
+      gaps[row] = gap;
+    }
+
+    let blockHeight = rowMetrics[0].top;
+    for(let row = 1; row < lines.length; row++){
+      blockHeight += rowMetrics[row - 1].bottom + gaps[row] + rowMetrics[row].top;
+    }
+    blockHeight += rowMetrics[lines.length - 1].bottom;
+
+    const yPositions = [];
+    yPositions[0] = centerY - blockHeight / 2 + rowMetrics[0].top;
+    for(let row = 1; row < lines.length; row++){
+      yPositions[row] = yPositions[row - 1] + rowMetrics[row - 1].bottom + gaps[row] + rowMetrics[row].top;
     }
 
     for(let row = 0; row < lines.length; row++){
@@ -656,7 +674,7 @@ h1{
         actor.vy *= 0.92;
       } else {
         const driftMul = actor.driftReady;
-        const rowBand = Math.max(actor.size * 0.34, 18);
+        const rowBand = Math.max(actor.size * 0.16, 10);
 
         actor.x += actor.vx * dt * driftMul;
         actor.y += actor.vy * dt * driftMul;
