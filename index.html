@@ -1,0 +1,2520 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>言葉踊る</title>
+<style>
+html,body{
+  margin:0;
+  width:100%;
+  height:100%;
+  overflow:hidden;
+  background:#0a0d12;
+}
+body{
+  font-family:"Yu Mincho","Hiragino Mincho ProN","MS Mincho",serif;
+}
+#inputScreen,#playScreen{
+  position:fixed;
+  inset:0;
+}
+#inputScreen{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(255,255,255,0.06), transparent 28%),
+    radial-gradient(circle at 80% 30%, rgba(255,255,255,0.04), transparent 24%),
+    linear-gradient(180deg,#151a22,#0b0e14);
+}
+#panel{
+  width:min(78vw,900px);
+  padding:28px;
+  border-radius:24px;
+  background:rgba(255,255,255,0.08);
+  border:1px solid rgba(255,255,255,0.14);
+  box-shadow:0 20px 70px rgba(0,0,0,0.34);
+  backdrop-filter:blur(10px);
+  color:rgba(255,255,255,0.95);
+}
+h1{
+  margin:0 0 10px;
+  font-size:32px;
+  font-weight:500;
+}
+.desc{
+  margin:0 0 16px;
+  font:15px/1.7 "Yu Gothic","Hiragino Kaku Gothic ProN",sans-serif;
+  color:rgba(255,255,255,0.76);
+}
+#backdropInput{
+  width:100%;
+  height:72px;
+  resize:none;
+  box-sizing:border-box;
+  border:none;
+  outline:none;
+  border-radius:14px;
+  padding:14px 18px;
+  margin:0 0 12px;
+  background:rgba(255,255,255,0.06);
+  color:rgba(255,255,255,0.92);
+  font:15px/1.6 "Yu Gothic","Hiragino Kaku Gothic ProN",sans-serif;
+}
+#backdropInput::placeholder{
+  color:rgba(255,255,255,0.38);
+}
+#textInput{
+  width:100%;
+  height:min(41vh,410px);
+  resize:none;
+  box-sizing:border-box;
+  border:none;
+  outline:none;
+  border-radius:16px;
+  padding:18px 20px;
+  background:rgba(255,255,255,0.08);
+  color:rgba(255,255,255,0.96);
+  font:16px/1.8 "Yu Gothic","Hiragino Kaku Gothic ProN",sans-serif;
+}
+#textInput::placeholder{
+  color:rgba(255,255,255,0.42);
+}
+#actions{
+  margin-top:16px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+}
+#message{
+  min-height:24px;
+  font:14px/1.5 "Yu Gothic","Hiragino Kaku Gothic ProN",sans-serif;
+  color:rgba(255,190,190,0.96);
+}
+.buttons{
+  display:flex;
+  gap:10px;
+}
+#storeButton,#presetButton{
+  border:none;
+  outline:none;
+  border-radius:13px;
+  padding:12px 22px;
+  background:rgba(255,255,255,0.14);
+  color:#fff;
+  font:16px "Yu Gothic","Hiragino Kaku Gothic ProN",sans-serif;
+  cursor:pointer;
+}
+#storeButton:hover{
+  background:rgba(255,255,255,0.20);
+}
+#playScreen{
+  display:none;
+}
+#stage{
+  position:absolute;
+  inset:0;
+  display:block;
+}
+</style>
+</head>
+<body>
+<div id="inputScreen">
+  <div id="panel">
+    <h1>言葉踊る</h1>
+    <textarea id="backdropInput" maxlength="160" placeholder="任意：劇名・副題・公演時間など&#10;改行で複数行入力できます"></textarea>
+    <textarea id="textInput" maxlength="2600" placeholder="100行以内、各行25字以内で入力&#10;Enterで改行"></textarea>
+    <div id="actions">
+      <div id="message"></div>
+      <div class="buttons">
+        <button id="presetButton" type="button">プリセットで始める</button>
+        <button id="storeButton" type="button">格納</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="playScreen">
+  <canvas id="stage"></canvas>
+</div>
+
+<script>
+(() => {
+  const inputScreen = document.getElementById("inputScreen");
+  const playScreen = document.getElementById("playScreen");
+  const textInput = document.getElementById("textInput");
+  const backdropInput = document.getElementById("backdropInput");
+  const storeButton = document.getElementById("storeButton");
+  const presetButton = document.getElementById("presetButton");
+  const message = document.getElementById("message");
+  const canvas = document.getElementById("stage");
+  const ctx = canvas.getContext("2d");
+
+  const W = window.innerWidth;
+  const H = window.innerHeight;
+  canvas.width = W;
+  canvas.height = H;
+
+  const PERSONAS = [
+    { key:"drifter", color:"#f6efe6", gravity:18, drag:0.9962, speed:[18,36], wave:[10,18], entrances:["mistRise","curtain","spiralIn","veilDrift"], swims:["orbit","breath","pendulum","float","ribbon","halo"], shapes:["line","softArc","bigArc","wave","doubleWave","ellipseWave","verticalSoftArc","shallowArc","fanArc"], reformBias:1.35, lineBias:0.92 },
+    { key:"restless", color:"#dbe8ff", gravity:22, drag:0.9953, speed:[22,48], wave:[16,28], entrances:["burst","sideSweep","dropChain","gatherSides"], swims:["zigzag","dash","snake","flutter","comet","ribbon"], shapes:["line","wave","doubleWave","zigArc","openRing","verticalWave","canyonWave"], reformBias:1.0, lineBias:0.98 },
+    { key:"solemn", color:"#f8f0c9", gravity:24, drag:0.9947, speed:[14,28], wave:[8,15], entrances:["condense","sideSweep","mistRise","hushBloom"], swims:["glide","breath","orbit","float","halo"], shapes:["line","softArc","bigArc","grandCircleArc","ellipseWave","verticalLine","verticalSoftArc","leaningColumn"], reformBias:1.2, lineBias:0.94 },
+    { key:"playful", color:"#ffe0f2", gravity:20, drag:0.9950, speed:[18,42], wave:[18,34], entrances:["dropChain","burst","spiralIn","veilDrift"], swims:["hop","zigzag","flutter","pendulum","ribbon","comet"], shapes:["wave","doubleWave","zigArc","spiralArc","openRing","verticalWave","fanArc","canyonWave"], reformBias:1.0, lineBias:1.00 },
+    { key:"shy", color:"#e2f5e3", gravity:19, drag:0.9967, speed:[10,24], wave:[8,16], entrances:["condense","mistRise","curtain","hushBloom"], swims:["breath","float","glide","orbit","halo"], shapes:["line","softArc","wave","ellipseWave","verticalLine","shallowArc","leaningColumn"], reformBias:1.45, lineBias:0.86 }
+  ];
+
+  const state = {
+    phase: "input",
+    lines: [],
+    bag: [],
+    active: [],
+    nextSpawnAt: 0,
+    targetConcurrent: 3,
+    lastTime: performance.now(),
+    showRect: null,
+    showPulse: 0,
+
+    scene: "drift",
+    sceneUntil: 0,
+    sceneStrength: 1,
+    sceneUpperBias: 1.2,
+    spawnHistory: [],
+    echoes: [],
+    recentVoices: [],
+
+    bgCurrent: { fog: 0.32, flow: 0.008, warmth: 0.0, focusX: 0.5, focusY: 0.36, focusA: 0.0 },
+    bgTarget:  { fog: 0.32, flow: 0.008, warmth: 0.0, focusX: 0.5, focusY: 0.36, focusA: 0.0 },
+
+    quietUntil: 0,
+    heroUntil: 0,
+    heroSpeechId: null,
+    speechSeq: 0,
+
+    backdropText: "",
+    backdropActors: [],
+    backdropMemory: {
+      tension: 0,
+      softness: 0,
+      question: 0,
+      pulse: 0,
+      resonance: 0,
+      glow: 0,
+      drift: 0
+    },
+    backdropParticles: [],
+
+    cycleDuration: 180000,
+    playStartedAt: 0,
+    rhythmIndex: -1,
+    rhythmSegment: null,
+    rhythmProgress: 0,
+    quietChance: 0.11,
+    quietWindow: [1200, 3000],
+    heroChance: 0.18,
+    heroWindow: [2200, 4000]
+  };
+
+  function clamp(v,min,max){ return Math.max(min, Math.min(max,v)); }
+  function lerp(a,b,t){ return a + (b-a)*t; }
+  function ease(t){ t = clamp(t,0,1); return t*t*(3-2*t); }
+  function easeOutCubic(t){ t = clamp(t,0,1); return 1 - Math.pow(1-t,3); }
+  function dist(x1,y1,x2,y2){ return Math.hypot(x2-x1,y2-y1); }
+  function hashString(str){
+    let h = 2166136261;
+    for(let i=0;i<str.length;i++){
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return h >>> 0;
+  }
+  function mulberry32(seed){
+    return function(){
+      let t = seed += 0x6D2B79F5;
+      t = Math.imul(t ^ t >>> 15, t | 1);
+      t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+  function randRange(rand,min,max){ return min + (max-min)*rand(); }
+  function withAlpha(hex,a){
+    const h = hex.replace("#","");
+    const r = parseInt(h.slice(0,2),16);
+    const g = parseInt(h.slice(2,4),16);
+    const b = parseInt(h.slice(4,6),16);
+    return `rgba(${r},${g},${b},${a})`;
+  }
+
+  const BACKDROP_FONT_FAMILY = '"Yu Gothic","Hiragino Kaku Gothic ProN","Meiryo",sans-serif';
+
+  function fitBackdropFontSize(text, targetWidth){
+    const safeText = (text || "").trim();
+    if(!safeText) return 24;
+
+    const testSize = 100;
+    ctx.save();
+    ctx.font = `${testSize}px ${BACKDROP_FONT_FAMILY}`;
+    const measured = ctx.measureText(safeText).width || 1;
+    ctx.restore();
+
+    const fitted = testSize * (targetWidth / measured);
+    return clamp(fitted, 18, 120);
+  }
+
+  function getBackdropScenePalette(scene, isTitle){
+    if(scene === "reveal"){
+      return isTitle
+        ? { glow:[255,222,190], main:[255,246,236], sub:[255,236,220] }
+        : { glow:[210,225,255], main:[236,240,246], sub:[255,243,234] };
+    }
+    if(scene === "chorus"){
+      return isTitle
+        ? { glow:[205,230,255], main:[244,248,255], sub:[230,238,248] }
+        : { glow:[190,220,255], main:[232,236,241], sub:[245,245,248] };
+    }
+    if(scene === "cascade"){
+      return isTitle
+        ? { glow:[188,210,255], main:[228,235,248], sub:[220,228,240] }
+        : { glow:[180,205,245], main:[220,228,238], sub:[230,235,242] };
+    }
+    return isTitle
+      ? { glow:[220,228,255], main:[245,248,252], sub:[255,245,235] }
+      : { glow:[190,220,255], main:[232,236,241], sub:[255,245,235] };
+  }
+
+  function getBackdropMoodInfluence(){
+    if(!state.active.length){
+      return {
+        swayMul: 1.0,
+        waveMul: 1.0,
+        alphaMul: 1.0,
+        tightenBoost: 0.0
+      };
+    }
+
+    let exclaim = 0;
+    let question = 0;
+    let pause = 0;
+    let softness = 0;
+    let hardness = 0;
+
+    for(const s of state.active){
+      const m = s.semanticWeight || {};
+      exclaim += m.exclaim ? 1 : 0;
+      question += m.question ? 1 : 0;
+      pause += m.pause ? 1 : 0;
+      softness += m.softness || 0;
+      hardness += m.hardness || 0;
+    }
+
+    const n = state.active.length;
+    exclaim /= n;
+    question /= n;
+    pause /= n;
+    softness /= n;
+    hardness /= n;
+
+    return {
+      swayMul: 1 + exclaim * 0.16 + question * 0.08 - pause * 0.10,
+      waveMul: 1 + softness * 0.22 + exclaim * 0.12 - hardness * 0.10,
+      alphaMul: 1 + pause * 0.06 + softness * 0.04,
+      tightenBoost: question * 0.04 + pause * 0.03
+    };
+  }
+  function shuffle(arr, rand){
+    for(let i=arr.length-1;i>0;i--){
+      const j = Math.floor(rand()*(i+1));
+      [arr[i],arr[j]] = [arr[j],arr[i]];
+    }
+    return arr;
+  }
+  function choice(arr, rand){ return arr[Math.floor(rand()*arr.length)]; }
+  function chainRatio(i, len){
+    if(len <= 1) return 0;
+    return i / (len - 1);
+  }
+  function roleForIndex(i, len){
+    const t = chainRatio(i, len);
+    if(t < 0.2) return "head";
+    if(t > 0.72) return "tail";
+    return "spine";
+  }
+  function choiceWeighted(rand, items){
+    const total = items.reduce((sum, item) => sum + item.weight, 0);
+    let r = rand() * total;
+    for(const item of items){
+      r -= item.weight;
+      if(r <= 0) return item.value;
+    }
+    return items[items.length - 1].value;
+  }
+
+  function spawnBackdropParticles(x, y, strength, palette){
+    const count = 2 + Math.min(5, Math.floor(strength * 6));
+    for(let i=0;i<count;i++){
+      state.backdropParticles.push({
+        x: x + (Math.random() - 0.5) * 36,
+        y: y + (Math.random() - 0.5) * 18,
+        vx: (Math.random() - 0.5) * (0.18 + strength * 0.35),
+        vy: -0.18 - Math.random() * (0.35 + strength * 0.45),
+        life: 1,
+        decay: 0.010 + Math.random() * 0.012,
+        r: 1.2 + Math.random() * (1.8 + strength * 2.2),
+        tw: Math.random() * Math.PI * 2,
+        palette: palette || "title"
+      });
+    }
+    if(state.backdropParticles.length > 140){
+      state.backdropParticles.splice(0, state.backdropParticles.length - 140);
+    }
+  }
+
+  function updateBackdropParticles(dt){
+    if(!state.backdropParticles.length) return;
+    const next = [];
+    for(const p of state.backdropParticles){
+      p.x += p.vx * dt * 60;
+      p.y += p.vy * dt * 60;
+      p.vx *= 0.992;
+      p.vy *= 0.988;
+      p.life -= p.decay * dt * 60;
+      if(p.life > 0.02) next.push(p);
+    }
+    state.backdropParticles = next;
+  }
+
+  function drawBackdropParticles(now){
+    if(!state.backdropParticles.length) return;
+    for(const p of state.backdropParticles){
+      const pulse = 0.72 + (Math.sin(now * 0.004 + p.tw) * 0.5 + 0.5) * 0.45;
+      const alpha = p.life * 0.18 * pulse;
+      const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r * 3.6);
+      if(p.palette === "warm"){
+        grad.addColorStop(0, `rgba(255,244,226,${alpha})`);
+        grad.addColorStop(0.55, `rgba(245,226,202,${alpha * 0.45})`);
+      } else {
+        grad.addColorStop(0, `rgba(232,240,255,${alpha})`);
+        grad.addColorStop(0.55, `rgba(215,228,248,${alpha * 0.42})`);
+      }
+      grad.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r * 3.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function setBgTargetByScene(scene){
+    if(scene === "drift"){
+      state.bgTarget = { fog: 0.32, flow: 0.008, warmth: 0.00, focusX: 0.50, focusY: 0.38, focusA: 0.00 };
+    } else if(scene === "chorus"){
+      state.bgTarget = { fog: 0.24, flow: 0.006, warmth: 0.06, focusX: 0.50, focusY: 0.34, focusA: 0.05 };
+    } else if(scene === "reveal"){
+      state.bgTarget = { fog: 0.18, flow: 0.004, warmth: 0.16, focusX: 0.50, focusY: 0.32, focusA: 0.11 };
+    } else if(scene === "cascade"){
+      state.bgTarget = { fog: 0.40, flow: 0.011, warmth: -0.04, focusX: 0.50, focusY: 0.42, focusA: 0.03 };
+    }
+  }
+
+  function getRhythmCycle(){
+    return [
+      { key:"drift",   duration:24000, concurrent:[1,2], gravityMul:1.00, upperBias:1.10, quietChance:0.18, quietWindow:[1800,3200], heroChance:0.08, heroWindow:[2200,3200], backdropDrift:0.22, backdropGlow:0.10, backdropResonance:0.14 },
+      { key:"chorus",  duration:30000, concurrent:[3,4], gravityMul:0.94, upperBias:1.24, quietChance:0.06, quietWindow:[900,1600], heroChance:0.12, heroWindow:[2200,3400], backdropDrift:0.34, backdropGlow:0.18, backdropResonance:0.24 },
+      { key:"reveal",  duration:18000, concurrent:[1,2], gravityMul:0.84, upperBias:1.34, quietChance:0.20, quietWindow:[1600,2600], heroChance:0.34, heroWindow:[3200,5200], backdropDrift:0.10, backdropGlow:0.42, backdropResonance:0.50 },
+      { key:"drift",   duration:22000, concurrent:[2,3], gravityMul:0.98, upperBias:1.18, quietChance:0.12, quietWindow:[1200,2200], heroChance:0.12, heroWindow:[2400,3600], backdropDrift:0.24, backdropGlow:0.14, backdropResonance:0.20 },
+      { key:"cascade", duration:24000, concurrent:[4,5], gravityMul:0.90, upperBias:1.44, quietChance:0.05, quietWindow:[700,1400], heroChance:0.16, heroWindow:[2200,3200], backdropDrift:0.46, backdropGlow:0.22, backdropResonance:0.34 },
+      { key:"chorus",  duration:28000, concurrent:[3,5], gravityMul:0.93, upperBias:1.30, quietChance:0.07, quietWindow:[900,1700], heroChance:0.18, heroWindow:[2400,3600], backdropDrift:0.38, backdropGlow:0.24, backdropResonance:0.30 },
+      { key:"reveal",  duration:16000, concurrent:[1,2], gravityMul:0.82, upperBias:1.38, quietChance:0.22, quietWindow:[1800,3200], heroChance:0.36, heroWindow:[3400,5400], backdropDrift:0.12, backdropGlow:0.50, backdropResonance:0.62 },
+      { key:"drift",   duration:18000, concurrent:[1,2], gravityMul:1.00, upperBias:1.12, quietChance:0.24, quietWindow:[2200,3600], heroChance:0.10, heroWindow:[2400,3400], backdropDrift:0.18, backdropGlow:0.12, backdropResonance:0.18 }
+    ];
+  }
+
+  function applyRhythmSegment(segment, now){
+    state.scene = segment.key;
+    state.sceneStrength = segment.gravityMul;
+    state.sceneUpperBias = segment.upperBias;
+    state.targetConcurrent = segment.concurrent[0] + Math.floor(Math.random() * (segment.concurrent[1] - segment.concurrent[0] + 1));
+    state.quietChance = segment.quietChance;
+    state.quietWindow = segment.quietWindow.slice();
+    state.heroChance = segment.heroChance;
+    state.heroWindow = segment.heroWindow.slice();
+    state.sceneUntil = now + segment.duration;
+    state.rhythmSegment = segment;
+    setBgTargetByScene(state.scene);
+  }
+
+  function chooseScene(now){
+    const cycle = getRhythmCycle();
+    const elapsed = Math.max(0, now - state.playStartedAt);
+    const cycleTime = elapsed % state.cycleDuration;
+    let acc = 0;
+    let index = 0;
+    let segment = cycle[0];
+
+    for(let i=0;i<cycle.length;i++){
+      const nextAcc = acc + cycle[i].duration;
+      if(cycleTime < nextAcc){
+        index = i;
+        segment = cycle[i];
+        state.rhythmProgress = (cycleTime - acc) / cycle[i].duration;
+        break;
+      }
+      acc = nextAcc;
+    }
+
+    if(index !== state.rhythmIndex || !state.rhythmSegment){
+      state.rhythmIndex = index;
+      applyRhythmSegment(segment, now);
+    } else {
+      state.rhythmProgress = (cycleTime - acc) / segment.duration;
+      state.sceneUntil = now + Math.max(50, segment.duration * (1 - state.rhythmProgress));
+    }
+  }
+
+  function maybeStartQuietAndHero(now){
+    if(now < state.quietUntil || now < state.heroUntil) return;
+    if(Math.random() < state.quietChance){
+      const [minDur, maxDur] = state.quietWindow;
+      state.quietUntil = now + minDur + Math.random() * (maxDur - minDur);
+    }
+  }
+
+  function maybeAssignHero(now){
+    if(now < state.quietUntil) return false;
+    if(now < state.heroUntil) return false;
+    if(Math.random() < state.heroChance){
+      const [minDur, maxDur] = state.heroWindow;
+      state.heroUntil = now + minDur + Math.random() * (maxDur - minDur);
+      return true;
+    }
+    return false;
+  }
+
+  function createBackdropActors(textBlock){
+    if(!textBlock || !textBlock.trim()) return [];
+
+    const lines = textBlock
+      .replace(/\r/g, "")
+      .split("\n")
+      .map(v => v.trim())
+      .filter(Boolean)
+      .slice(0, 4);
+
+    if(lines.length === 0) return [];
+
+    const actors = [];
+    const totalRows = lines.length;
+    const centerY = H * 0.50;
+    const rowGap = H * 0.11;
+
+    for(let row = 0; row < lines.length; row++){
+      const line = lines[row];
+      const chars = [...line];
+
+      const isTitle = row === 0;
+      const widthRatio = isTitle ? 0.78 : (chars.length <= 8 ? 0.64 : 0.84);
+      const targetWidth = W * widthRatio;
+      const sizeBase = fitBackdropFontSize(line, targetWidth);
+      const size = isTitle ? sizeBase * 0.90 : sizeBase * (0.82 - row * 0.05);
+      const rowY = centerY + (row - (totalRows - 1) / 2) * rowGap;
+
+      ctx.save();
+      ctx.font = `${size}px ${BACKDROP_FONT_FAMILY}`;
+
+      const glyphs = [];
+      let cursor = 0;
+
+      for(let i = 0; i < chars.length; i++){
+        const ch = chars[i];
+        const w = ctx.measureText(ch).width;
+        glyphs.push({
+          ch,
+          width: w,
+          centerOffsetX: cursor + w / 2,
+          phase: i * 0.22 + row * 0.8
+        });
+        cursor += w;
+      }
+
+      ctx.restore();
+
+      const totalWidth = cursor;
+      const centeredGlyphs = glyphs.map(g => ({
+        ch: g.ch,
+        offsetX: g.centerOffsetX - totalWidth / 2,
+        phase: g.phase
+      }));
+
+      actors.push({
+        id: `bd-${row}`,
+        line,
+        chars: centeredGlyphs,
+        isTitle,
+        x: W * 0.5,
+        y: rowY,
+        baseX: W * 0.5,
+        baseY: rowY,
+        homeY: rowY,
+        vx: isTitle ? 0.0 : (row % 2 === 0 ? 4.5 : -4.0),
+        vy: isTitle ? 0.0 : (row - (totalRows - 1) / 2) * 0.22,
+        size,
+        alpha: isTitle ? 0.16 : Math.max(0.06, 0.10 - row * 0.012),
+        sway: isTitle ? 2.5 : (6 + row * 2.5),
+        driftPhase: row * 1.4,
+        totalWidth,
+        waveAmp: isTitle ? 2.5 : (6 + row * 2.0),
+        waveFreq: isTitle ? 0.08 : (0.15 + row * 0.02),
+        tighten: 0,
+        glowBoost: isTitle ? 1.15 : 1.0,
+        appear: 0,
+        appearDelay: row * 0.22,
+        driftReady: 0,
+        beam: 0,
+        beamPhase: row * 0.6,
+        prevTighten: 0,
+        prevBeam: 0
+      });
+    }
+
+    return actors;
+  }
+
+  function updateBackdropActors(dt, now){
+    if(!state.backdropActors.length) return;
+
+    const scenePushY =
+      state.scene === "reveal" ? -1.2 :
+      state.scene === "cascade" ? -0.25 :
+      state.scene === "chorus" ? -0.3 : -0.08;
+
+    const heroActive = now < state.heroUntil && state.heroSpeechId !== null;
+    const mem = state.backdropMemory;
+    const segment = state.rhythmSegment || { backdropDrift:0.22, backdropGlow:0.10, backdropResonance:0.14 };
+    const stagePulse = Math.sin(now * 0.00055 + state.rhythmProgress * Math.PI * 2) * 0.5 + 0.5;
+
+    for(const actor of state.backdropActors){
+      const fadeSpeed = actor.isTitle ? 1.6 : 1.2;
+      const driftDelay = actor.isTitle ? 0.18 : 0.45 + actor.appearDelay * 0.3;
+
+      actor.appear = clamp(actor.appear + dt * fadeSpeed, 0, 1);
+      actor.driftReady = clamp((actor.appear - driftDelay) / (1 - driftDelay), 0, 1);
+
+      const targetTighten =
+        heroActive ? (actor.isTitle ? 0.28 : 0.18) :
+        state.scene === "reveal" ? (actor.isTitle ? 0.14 : 0.08) :
+        0.0;
+      const memoryDrift = actor.isTitle ? mem.resonance * 0.08 : mem.drift * 0.18;
+      const stageDrift = actor.isTitle ? segment.backdropResonance * 0.06 : segment.backdropDrift * 0.22;
+
+      actor.prevTighten = actor.tighten;
+      actor.prevBeam = actor.beam;
+      actor.tighten += (targetTighten + mem.glow * 0.06 - actor.tighten) * 0.08;
+
+      const beamTarget = heroActive && actor.isTitle ? 1 : 0;
+      actor.beam += (beamTarget - actor.beam) * 0.10;
+
+      if(actor.isTitle){
+        const titleDelta = Math.abs(actor.tighten - actor.prevTighten) + Math.abs(actor.beam - actor.prevBeam);
+        const titleDisplacement = dist(actor.x, actor.y, actor.baseX, actor.baseY) * 0.0025;
+        const cue = titleDelta * 2.6 + titleDisplacement;
+        if(cue > 0.055 && Math.random() < 0.30){
+          spawnBackdropParticles(
+            actor.x + (Math.random() - 0.5) * actor.totalWidth * 0.7,
+            actor.y + actor.size * (0.08 + Math.random() * 0.38),
+            Math.min(1.15, cue * 1.8),
+            state.scene === "reveal" ? "warm" : "title"
+          );
+        }
+      }
+
+      if(actor.isTitle){
+        const resonanceLift = Math.sin(now * 0.0012 + actor.driftPhase) * (4 + mem.resonance * 8 + segment.backdropResonance * 10) * (0.30 + stagePulse * 0.28);
+        actor.baseY = H * (0.47 - segment.backdropGlow * 0.03) + resonanceLift * 0.18;
+        actor.baseX = W * 0.5 + Math.sin(now * 0.00032 + actor.driftPhase) * (6 + mem.question * 4);
+        actor.x += (actor.baseX - actor.x) * (0.08 + memoryDrift * 0.04);
+        actor.y += (actor.baseY - actor.y) * (0.08 + stageDrift * 0.04);
+        actor.vx *= 0.92;
+        actor.vy *= 0.92;
+      } else {
+        const driftMul = actor.driftReady;
+
+        actor.x += actor.vx * dt * driftMul;
+        actor.y += actor.vy * dt * driftMul;
+
+        actor.vx += Math.sin(now * 0.00023 + actor.driftPhase) * 0.05 * driftMul;
+        actor.vy += scenePushY * dt * 8 * driftMul;
+        actor.vx *= 0.998;
+        actor.vy *= 0.993;
+
+        actor.baseX = W * 0.5 + Math.sin(now * 0.00018 + actor.driftPhase) * (18 + mem.question * 6 + segment.backdropDrift * 18);
+        actor.baseY = H * 0.50 + (actor.isTitle ? 0 : (Math.sin(now * 0.00022 + actor.driftPhase) * (6 + mem.softness * 1.8))) + (actor.isTitle ? 0 : 0);
+        const targetX = actor.baseX + Math.sin(now * 0.00012 + actor.driftPhase) * (24 + mem.drift * 6 + segment.backdropDrift * 18);
+        const targetY = actor.baseY + Math.sin(now * 0.00028 + actor.driftPhase) * (7 + mem.softness * 1.2 + segment.backdropResonance * 8);
+
+        actor.x += (targetX - actor.x) * (0.004 + driftMul * 0.002);
+        actor.y += (targetY - actor.y) * (0.006 + driftMul * 0.002);
+
+        if(actor.x < W * 0.14) actor.vx += 0.7 * driftMul;
+        if(actor.x > W * 0.86) actor.vx -= 0.7 * driftMul;
+        if(actor.y < H * 0.08) actor.vy += 0.35 * driftMul;
+        if(actor.y > H * 0.70) actor.vy -= 0.85 * driftMul;
+      }
+    }
+  }
+
+  function drawReadyBackdrop(now){
+    if(!state.backdropActors.length) return;
+
+    const titleActor = state.backdropActors.find(actor => actor.isTitle) || state.backdropActors[0];
+    if(!titleActor) return;
+
+    const pulse = Math.sin(now * 0.0012) * 0.5 + 0.5;
+    const appear = 0.78 + pulse * 0.08;
+    const palette = getBackdropScenePalette("drift", true);
+
+    for(let i = 0; i < titleActor.chars.length; i++){
+      const c = titleActor.chars[i];
+      const x =
+        W * 0.5 +
+        c.offsetX +
+        Math.sin(now * 0.00065 + c.phase) * 1.8;
+
+      const y =
+        H * 0.36 +
+        Math.cos(now * 0.0009 + c.phase * 0.8) * 1.6;
+
+      const fontSize = titleActor.size * 0.76 + pulse * 0.4;
+      const alphaBase = titleActor.alpha * 0.34 * appear;
+      const glowAlpha = alphaBase * 0.48;
+
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(Math.sin(now * 0.0004 + c.phase) * 0.01);
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.font = `${fontSize}px ${BACKDROP_FONT_FAMILY}`;
+
+      ctx.fillStyle = `rgba(${palette.glow[0]},${palette.glow[1]},${palette.glow[2]},${glowAlpha})`;
+      ctx.fillText(c.ch, 0, 0);
+
+      ctx.fillStyle = `rgba(${palette.sub[0]},${palette.sub[1]},${palette.sub[2]},${alphaBase * 0.18})`;
+      ctx.fillText(c.ch, 0.8, 1.1);
+
+      ctx.fillStyle = `rgba(${palette.main[0]},${palette.main[1]},${palette.main[2]},${alphaBase})`;
+      ctx.fillText(c.ch, 0, 0);
+
+      ctx.restore();
+    }
+  }
+
+  function drawBackdropActors(now){
+    if(!state.backdropActors.length) return;
+
+    const heroActive = performance.now() < state.heroUntil && state.heroSpeechId !== null;
+    const globalAlphaMul = heroActive ? 0.84 : 1.0;
+    const mood = getBackdropMoodInfluence();
+    const mem = state.backdropMemory;
+
+    for(const actor of state.backdropActors){
+      const palette = getBackdropScenePalette(state.scene, actor.isTitle);
+      const segment = state.rhythmSegment || { backdropDrift:0.22, backdropGlow:0.10, backdropResonance:0.14 };
+      const rhythmGlow = segment.backdropGlow + mem.glow * 0.18;
+      const memoryTight = clamp(mem.tension * 0.018 + mem.question * 0.012 + rhythmGlow * 0.08, 0, 0.24);
+      const memoryWave = 1 + mem.softness * 0.03 + mem.resonance * 0.07;
+      const lineWave = Math.sin(now * 0.00055 + actor.driftPhase) * actor.waveAmp * mood.waveMul * memoryWave;
+      const appearEase = easeOutCubic(actor.appear);
+      const driftEase = easeOutCubic(actor.driftReady);
+      const localTighten = clamp(actor.tighten + mood.tightenBoost + memoryTight, 0, 0.45);
+
+      if(actor.isTitle && actor.beam > 0.02){
+        const beamPulse = Math.sin(now * 0.004 + actor.beamPhase) * 0.5 + 0.5;
+        const beamAlpha = actor.beam * (0.16 + beamPulse * 0.10) * globalAlphaMul;
+        const beamWidth = actor.totalWidth * (0.90 - localTighten * 0.12);
+        const beamY = actor.y + actor.size * 0.72;
+
+        const grad = ctx.createLinearGradient(
+          actor.x - beamWidth / 2, beamY,
+          actor.x + beamWidth / 2, beamY
+        );
+        grad.addColorStop(0, "rgba(255,255,255,0)");
+        grad.addColorStop(0.18, `rgba(200,225,255,${beamAlpha * 0.55})`);
+        grad.addColorStop(0.50, `rgba(255,248,235,${beamAlpha})`);
+        grad.addColorStop(0.82, `rgba(200,225,255,${beamAlpha * 0.55})`);
+        grad.addColorStop(1, "rgba(255,255,255,0)");
+
+        ctx.save();
+        ctx.strokeStyle = grad;
+        ctx.lineWidth = 1.4 + beamPulse * 0.9;
+        ctx.beginPath();
+        ctx.moveTo(actor.x - beamWidth / 2, beamY);
+        ctx.lineTo(actor.x + beamWidth / 2, beamY);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      for(let i = 0; i < actor.chars.length; i++){
+        const c = actor.chars[i];
+        const pulse = Math.sin(now * 0.0014 + c.phase) * 0.5 + 0.5;
+
+        const localWaveY =
+          Math.sin(now * (0.0008 + actor.waveFreq * 0.001) + i * 0.18 + actor.driftPhase)
+          * (actor.isTitle ? (1.2 + pulse * 0.8) : (4 + pulse * 2.2))
+          * driftEase
+          * mood.waveMul;
+
+        const localWaveX =
+          Math.cos(now * 0.00055 + i * 0.12 + actor.driftPhase)
+          * (actor.isTitle ? 0.5 : (1.5 + pulse * 1.1))
+          * driftEase
+          * mood.swayMul;
+
+        const tightenedOffsetX = c.offsetX * (1 - localTighten);
+
+        const x =
+          actor.x +
+          tightenedOffsetX +
+          Math.sin(now * 0.0010 + c.phase) * actor.sway * driftEase * mood.swayMul +
+          localWaveX;
+
+        const y =
+          actor.y +
+          lineWave * (actor.isTitle ? 0.16 : 0.35) * driftEase +
+          localWaveY +
+          Math.cos(now * 0.0011 + c.phase * 0.7)
+          * (actor.isTitle ? (1.3 + pulse) : (3 + pulse * 2.0))
+          * driftEase;
+
+        const fontSize = actor.size * (0.92 + appearEase * 0.08 + mem.resonance * (actor.isTitle ? 0.018 : 0.008)) + pulse * (actor.isTitle ? 0.8 : 1.1);
+        const alphaBase = (actor.alpha + pulse * 0.014 + mem.softness * 0.003 + rhythmGlow * (actor.isTitle ? 0.05 : 0.02)) * globalAlphaMul * appearEase * mood.alphaMul;
+        const glowAlpha = actor.isTitle ? alphaBase * (0.58 + rhythmGlow * 0.7) * actor.glowBoost : alphaBase * (0.34 + mem.glow * 0.12);
+
+        ctx.save();
+        ctx.translate(x, y + (1 - appearEase) * 8);
+        ctx.rotate(Math.sin(now * 0.00055 + c.phase) * (actor.isTitle ? 0.016 : 0.032));
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.font = `${fontSize}px ${BACKDROP_FONT_FAMILY}`;
+
+        ctx.fillStyle = `rgba(${palette.glow[0]},${palette.glow[1]},${palette.glow[2]},${glowAlpha})`;
+        ctx.fillText(c.ch, 0, 0);
+
+        ctx.fillStyle = `rgba(${palette.sub[0]},${palette.sub[1]},${palette.sub[2]},${alphaBase * 0.20})`;
+        ctx.fillText(c.ch, 1.0, 1.4);
+
+        ctx.fillStyle = actor.isTitle
+          ? `rgba(${palette.main[0]},${palette.main[1]},${palette.main[2]},${alphaBase * 1.10})`
+          : `rgba(${palette.main[0]},${palette.main[1]},${palette.main[2]},${alphaBase})`;
+        ctx.fillText(c.ch, 0, 0);
+
+        ctx.restore();
+      }
+    }
+  }
+
+  function detectKind(ch){
+    if(/[\u4E00-\u9FFF々〆ヶ]/.test(ch)) return "kanji";
+    if(/[\u3040-\u309F]/.test(ch)) return "hiragana";
+    if(/[\u30A0-\u30FFー]/.test(ch)) return "katakana";
+    return "symbol";
+  }
+  function sizeScaleForKind(kind, len, rand){
+    let base = 1;
+    if(len <= 4) base = 1.55;
+    else if(len <= 8) base = 1.26;
+    else if(len <= 12) base = 1.08;
+    else if(len <= 18) base = 0.92;
+    else base = 0.82;
+
+    if(kind === "kanji") return base * randRange(rand, 1.10, 1.34);
+    if(kind === "hiragana") return base * randRange(rand, 0.68, 0.98);
+    if(kind === "katakana") return base * randRange(rand, 0.86, 1.08);
+    return base * randRange(rand, 0.58, 0.88);
+  }
+  function getRadicalLineScale(text, mood, rand){
+    const len = [...text].length;
+    let scale = choice([0.62, 0.78, 0.94, 1.12, 1.36, 1.72, 2.08], rand);
+
+    if(len <= 4) scale *= randRange(rand, 1.10, 1.34);
+    else if(len >= 18) scale *= randRange(rand, 0.72, 0.92);
+    if(mood.exclaim) scale *= randRange(rand, 1.12, 1.32);
+    if(mood.question) scale *= randRange(rand, 1.04, 1.18);
+    if(mood.pause) scale *= randRange(rand, 0.88, 1.00);
+    if(mood.hardness > 0.45) scale *= randRange(rand, 1.04, 1.16);
+    if(mood.softness > 0.60) scale *= randRange(rand, 0.92, 1.08);
+
+    return clamp(scale, 0.58, 2.30);
+  }
+  function getFontBase(text, mood, rand){
+    const len = [...text].length;
+    let base = 31;
+    if(len <= 4) base = 58;
+    else if(len <= 8) base = 50;
+    else if(len <= 12) base = 43;
+    else if(len <= 18) base = 36;
+
+    return base * getRadicalLineScale(text, mood, rand);
+  }
+  function buildCharacterEmphasis(text, mood, rand){
+    const chars = [...text];
+    const n = chars.length;
+    const mode = choice(["centerBloom","edgeBloom","alternating","crescendo","valley"], rand);
+    const focusA = randRange(rand, 0.18, 0.82);
+    const focusB = clamp(focusA + randRange(rand, -0.28, 0.28), 0.05, 0.95);
+
+    return chars.map((ch, i) => {
+      const t = n <= 1 ? 0.5 : i / (n - 1);
+      let emphasis = 1;
+
+      if(mode === "centerBloom"){
+        emphasis *= 0.78 + (1 - Math.abs(t - 0.5) / 0.5) * 0.92;
+      } else if(mode === "edgeBloom"){
+        emphasis *= 0.76 + Math.max(1 - t, t) * 0.88;
+      } else if(mode === "alternating"){
+        emphasis *= i % 2 === 0 ? 1.42 : 0.74;
+      } else if(mode === "crescendo"){
+        emphasis *= 0.72 + t * 1.18;
+      } else if(mode === "valley"){
+        emphasis *= 1.26 - (1 - Math.abs(t - 0.5) / 0.5) * 0.52;
+      }
+
+      const glowA = Math.max(0, 1 - Math.abs(t - focusA) / 0.22);
+      const glowB = Math.max(0, 1 - Math.abs(t - focusB) / 0.18);
+      emphasis *= 0.88 + glowA * 0.42 + glowB * 0.28;
+
+      if(mood.exclaim && i === n - 1) emphasis *= 1.18;
+      if(mood.question && i >= Math.max(0, n - 2)) emphasis *= 1.12;
+      if(detectKind(ch) === "symbol") emphasis *= 0.86;
+
+      return clamp(emphasis, 0.52, 1.95);
+    });
+  }
+
+  function analyzeLineMood(line){
+    const len = [...line].length;
+    const q = /[？?]/.test(line);
+    const ex = /[！!]/.test(line);
+    const dots = /[…‥。]/.test(line);
+    const soft = (line.match(/[\u3040-\u309F]/g) || []).length;
+    const hard = (line.match(/[\u4E00-\u9FFF々〆ヶ]/g) || []).length;
+
+    return {
+      short: len <= 7,
+      question: q,
+      exclaim: ex,
+      pause: dots,
+      softness: soft / Math.max(1, len),
+      hardness: hard / Math.max(1, len)
+    };
+  }
+  function validateInput(raw){
+    const lines = raw.replace(/\r/g,"").split("\n").map(v => v.trim()).filter(Boolean);
+    if(lines.length === 0) return { ok:false, message:"1行以上入力してください。" };
+    if(lines.length > 100) return { ok:false, message:"100行以内で入力してください。" };
+    for(let i=0;i<lines.length;i++){
+      if([...lines[i]].length > 25){
+        return { ok:false, message:`${i+1}行目が25字を超えています。` };
+      }
+    }
+    return { ok:true, lines };
+  }
+  function refillBag(){
+    const rand = mulberry32(hashString(state.lines.join("|") + String(Date.now())));
+    state.bag = shuffle(state.lines.map((line, i) => ({ line, index:i })), rand);
+  }
+  function takeRandomLine(){
+    if(state.bag.length === 0) refillBag();
+    return state.bag.pop();
+  }
+  function scorePoint(x, y, now){
+    let score = 0;
+
+    const upperBias = state.sceneUpperBias || 1.2;
+    const topness = 1 - (y / H);
+    score += topness * 220 * upperBias;
+
+    const centerBias = 1 - Math.abs(x - W * 0.5) / (W * 0.5);
+    score += centerBias * 40;
+
+    for(const s of state.active){
+      const d = dist(x, y, s.centerX, s.centerY);
+      score += clamp(d, 0, 300) * 0.8;
+      if(d < 180) score -= (180 - d) * 2.4;
+    }
+
+    for(const h of state.spawnHistory){
+      const d = dist(x, y, h.x, h.y);
+      if(d < 220) score -= (220 - d) * 1.2;
+    }
+
+    for(const e of state.echoes){
+      const d = dist(x, y, e.x, e.y);
+      const attract = Math.max(0, 1 - d / 280) * e.strength;
+      if(state.scene === "reveal"){
+        score += attract * 140;
+      } else if(state.scene === "cascade"){
+        score -= attract * 90;
+      } else {
+        score += attract * 40;
+      }
+    }
+
+    if(state.scene === "reveal"){
+      const revealZone = dist(x, y, W * 0.5, H * 0.38);
+      score -= revealZone * 0.18;
+    }
+
+    return score;
+  }
+
+  function chooseCenter(now){
+    let best = null;
+    let bestScore = -Infinity;
+
+    for(let i=0;i<32;i++){
+      const x = W * 0.14 + Math.random() * (W * 0.72);
+      const y = H * 0.10 + Math.random() * (H * 0.62);
+      const score = scorePoint(x, y, now);
+      if(score > bestScore){
+        bestScore = score;
+        best = { x, y };
+      }
+    }
+
+    state.spawnHistory.push({ x: best.x, y: best.y, at: now });
+    if(state.spawnHistory.length > 18) state.spawnHistory.shift();
+
+    return best;
+  }
+
+  function orientReadable(points, fontBase, shapeName){
+    const variants = [];
+    const rots = [-0.28, -0.16, -0.08, 0, 0.08, 0.16, 0.28];
+    const isVertical =
+      shapeName === "verticalLine" ||
+      shapeName === "verticalSoftArc" ||
+      shapeName === "verticalWave";
+
+    for(const reverse of [false, true]){
+      for(const rot of rots){
+        const src = reverse ? [...points].reverse() : points;
+        const pts = src.map(p => {
+          const c = Math.cos(rot), s = Math.sin(rot);
+          return { x:p.x*c - p.y*s, y:p.x*s + p.y*c };
+        });
+        variants.push(pts);
+      }
+    }
+
+    let best = variants[0];
+    let bestScore = -Infinity;
+    for(const pts of variants){
+      let score = 0;
+      const first = pts[0];
+      const last = pts[pts.length - 1];
+      const dx = last.x - first.x;
+      const dy = last.y - first.y;
+
+      if(isVertical){
+        score += dy * 1.5;
+        score -= Math.abs(dx) * 0.35;
+        if(dy < 0) score -= Math.abs(dy) * 3.5;
+        if(first.y < 0) score += 14;
+      } else {
+        score += dx * 1.4;
+        score += dy * 0.35;
+        if(dx < 0) score -= Math.abs(dx) * 3.5;
+        if(dy < -fontBase * 0.35) score -= Math.abs(dy) * 2.4;
+        if(first.x > 0) score += 22;
+        if(first.y < 0) score += 18;
+      }
+
+      for(let i=1;i<pts.length;i++){
+        const sx = pts[i].x - pts[i-1].x;
+        const sy = pts[i].y - pts[i-1].y;
+
+        if(isVertical){
+          if(sy < -fontBase * 0.18) score -= Math.abs(sy) * 5.0;
+          score += sy * 0.45;
+          score -= Math.abs(sx) * 0.20;
+        } else {
+          if(sx < -fontBase * 0.18) score -= Math.abs(sx) * 5.0;
+          if(sy < -fontBase * 0.20) score -= Math.abs(sy) * 3.0;
+          score += sx * 0.42;
+        }
+      }
+      if(score > bestScore){
+        bestScore = score;
+        best = pts;
+      }
+    }
+    return best;
+  }
+
+  function makeReadablePath(text, fontBase, rand, shapeName){
+    const n = [...text].length;
+    const gap = fontBase * 0.92;
+    const total = gap * Math.max(1, n - 1);
+    const points = [];
+
+    for(let i=0;i<n;i++){
+      const t = n === 1 ? 0.5 : i / (n - 1);
+      let x = 0;
+      let y = 0;
+
+      if(shapeName === "line"){
+        x = lerp(-total/2, total/2, t);
+      }
+      else if(shapeName === "softArc"){
+        x = lerp(-total/2, total/2, t);
+        y = -Math.sin(t * Math.PI) * fontBase * 0.55;
+      }
+      else if(shapeName === "shallowArc"){
+        x = lerp(-total/2, total/2, t);
+        y = -Math.sin(t * Math.PI) * fontBase * 0.28;
+      }
+      else if(shapeName === "bigArc"){
+        x = lerp(-total/2, total/2, t);
+        y = -Math.sin(t * Math.PI) * fontBase * 1.2;
+      }
+      else if(shapeName === "fanArc"){
+        const arcT = lerp(-1.05, 1.05, t);
+        const r = Math.max(fontBase * 1.6, total * 0.24);
+        x = Math.sin(arcT) * r;
+        y = -Math.cos(arcT) * r + r * 0.82;
+      }
+      else if(shapeName === "wave"){
+        x = lerp(-total/2, total/2, t);
+        y = Math.sin(t * Math.PI * 1.15) * fontBase * 0.85;
+      }
+      else if(shapeName === "doubleWave"){
+        x = lerp(-total/2, total/2, t);
+        y = Math.sin(t * Math.PI * 2.1) * fontBase * 0.72;
+      }
+      else if(shapeName === "canyonWave"){
+        x = lerp(-total/2, total/2, t);
+        y = Math.sin(t * Math.PI * 1.9) * fontBase * 0.44 + Math.sin(t * Math.PI * 0.95) * fontBase * -0.42;
+      }
+      else if(shapeName === "ellipseWave"){
+        x = lerp(-total/2, total/2, t);
+        y = Math.sin(t * Math.PI * 1.6) * fontBase * (0.35 + 0.4 * Math.sin(t * Math.PI));
+      }
+      else if(shapeName === "grandCircleArc"){
+        const a = lerp(-2.3, 0.7, t);
+        const rx = total * 0.28;
+        const ry = fontBase * 2.1;
+        x = Math.cos(a) * rx + lerp(-total*0.15, total*0.15, t);
+        y = Math.sin(a) * ry;
+      }
+      else if(shapeName === "openRing"){
+        const a = lerp(-2.4, 0.8, t);
+        const r = Math.max(fontBase * 2.2, total * 0.18);
+        x = Math.cos(a) * r + lerp(-fontBase*0.2, fontBase*0.2, t);
+        y = Math.sin(a) * r * 0.78;
+      }
+      else if(shapeName === "spiralArc"){
+        const a = lerp(-2.0, 1.1, t);
+        const r = lerp(fontBase * 0.9, Math.max(fontBase * 2.2, total * 0.14), t);
+        x = Math.cos(a) * r + lerp(-total*0.16, total*0.18, t);
+        y = Math.sin(a) * r * 0.95;
+      }
+      else if(shapeName === "spiralNest"){
+        const turns = 2.1;
+        const a = lerp(-Math.PI * 1.45, Math.PI * turns, t);
+        const r = lerp(fontBase * 0.45, Math.max(fontBase * 2.0, total * 0.10), t);
+        x = Math.cos(a) * r;
+        y = Math.sin(a) * r * 0.90;
+      }
+      else if(shapeName === "spiralShell"){
+        const turns = 2.7;
+        const a = lerp(-Math.PI * 1.9, Math.PI * turns, t);
+        const r = lerp(Math.max(fontBase * 2.4, total * 0.16), fontBase * 0.60, t);
+        x = Math.cos(a) * r + lerp(-fontBase * 0.24, fontBase * 0.24, t);
+        y = Math.sin(a) * r * 0.86;
+      }
+      else if(shapeName === "zigArc"){
+        x = lerp(-total/2, total/2, t);
+        y = (i % 2 === 0 ? -1 : 1) * fontBase * 0.46 + -Math.sin(t * Math.PI) * fontBase * 0.42;
+      }
+      else if(shapeName === "verticalLine"){
+        y = lerp(-total/2, total/2, t);
+      }
+      else if(shapeName === "verticalSoftArc"){
+        y = lerp(-total/2, total/2, t);
+        x = Math.sin(t * Math.PI) * fontBase * 0.55;
+      }
+      else if(shapeName === "verticalWave"){
+        y = lerp(-total/2, total/2, t);
+        x = Math.sin(t * Math.PI * 1.25) * fontBase * 0.75;
+      }
+      else if(shapeName === "leaningColumn"){
+        y = lerp(-total/2, total/2, t);
+        x = lerp(-fontBase * 0.35, fontBase * 0.35, t) + Math.sin(t * Math.PI * 1.2) * fontBase * 0.18;
+      }
+      else {
+        x = lerp(-total/2, total/2, t);
+      }
+
+      points.push({ x, y });
+    }
+
+    return orientReadable(points, fontBase, shapeName);
+  }
+
+  function getSceneVisualWeights(){
+    const segment = state.rhythmSegment || {};
+    const progress = state.rhythmProgress || 0;
+    const revealPush = state.scene === "reveal" ? 1 : 0;
+    const chorusPush = state.scene === "chorus" ? 1 : 0;
+    const driftPush = state.scene === "drift" ? 1 : 0;
+    const cascadePush = state.scene === "cascade" ? 1 : 0;
+
+    return {
+      starDensity: 0.18 + (segment.backdropGlow || 0.10) * 1.1 + driftPush * 0.06 + revealPush * 0.08,
+      starTwinkle: 0.30 + (segment.backdropResonance || 0.14) * 0.9 + chorusPush * 0.08,
+      wraithAlpha: 0.020 + (segment.backdropDrift || 0.22) * 0.020 + driftPush * 0.006 + revealPush * 0.004,
+      wraithMotion: 0.24 + cascadePush * 0.10 + chorusPush * 0.06 + progress * 0.05
+    };
+  }
+
+  function buildPreTargets(text, fontBase, rand, mode){
+    const chars = [...text];
+    const n = chars.length;
+
+    return chars.map((ch, i) => {
+      const t = n === 1 ? 0.5 : i / Math.max(1, n - 1);
+      let x = 0;
+      let y = 0;
+
+      if(mode === "orbit"){
+        const a = t * Math.PI * 2 + randRange(rand, -0.5, 0.5);
+        const r = fontBase * randRange(rand, 2.2, 4.8);
+        x = Math.cos(a) * r;
+        y = Math.sin(a) * r;
+      }
+      else if(mode === "breath"){
+        const a = rand() * Math.PI * 2;
+        const r = Math.sqrt(rand()) * fontBase * 3.6;
+        x = Math.cos(a) * r;
+        y = Math.sin(a) * r;
+      }
+      else if(mode === "pendulum"){
+        x = lerp(-fontBase * 4.8, fontBase * 4.8, t);
+        y = Math.sin(t * Math.PI) * fontBase * 1.2 + (i % 2 ? 1 : -1) * fontBase * 0.5;
+      }
+      else if(mode === "float"){
+        x = randRange(rand, -fontBase * 4.2, fontBase * 4.2);
+        y = randRange(rand, -fontBase * 2.4, fontBase * 2.4);
+      }
+      else if(mode === "zigzag"){
+        x = lerp(-fontBase * 4.8, fontBase * 4.8, t);
+        y = (i % 2 === 0 ? -1 : 1) * fontBase * randRange(rand, 0.7, 1.8);
+      }
+      else if(mode === "dash"){
+        x = lerp(-fontBase * 5.8, fontBase * 1.8, t);
+        y = randRange(rand, -fontBase * 1.1, fontBase * 1.1) * (0.25 + t);
+      }
+      else if(mode === "flutter"){
+        const a = t * Math.PI * 3.0 + randRange(rand, -0.4, 0.4);
+        const r = lerp(fontBase * 1.0, fontBase * 4.2, t);
+        x = Math.cos(a) * r;
+        y = Math.sin(a) * r * 0.8;
+      }
+      else if(mode === "hop"){
+        x = lerp(-fontBase * 4.6, fontBase * 4.6, t);
+        y = -Math.abs(Math.sin(t * Math.PI * 2.1)) * fontBase * 1.8;
+      }
+      else if(mode === "glide"){
+        x = lerp(-fontBase * 5.0, fontBase * 5.0, t);
+        y = -Math.sin(t * Math.PI) * fontBase * 0.65;
+      }
+      else if(mode === "snake"){
+        x = lerp(-fontBase * 5.0, fontBase * 5.0, t);
+        y = Math.sin(t * Math.PI * 2.5 + randRange(rand, -0.5, 0.5)) * fontBase * 1.25;
+      }
+      else if(mode === "ribbon"){
+        x = lerp(-fontBase * 5.2, fontBase * 5.2, t);
+        y = Math.sin(t * Math.PI * 1.8) * fontBase * 1.0 + Math.cos(t * Math.PI * 3.2) * fontBase * 0.28;
+      }
+      else if(mode === "comet"){
+        const tail = 1 - t;
+        x = lerp(-fontBase * 6.0, fontBase * 1.4, t);
+        y = Math.sin(t * Math.PI * 0.9) * fontBase * 0.55;
+        x -= tail * tail * fontBase * 1.2;
+      }
+      else if(mode === "halo"){
+        const a = t * Math.PI * 2;
+        const r = fontBase * 2.8;
+        x = Math.cos(a) * r;
+        y = Math.sin(a) * r * 0.82;
+      }
+      else if(mode === "vortex"){
+        const a = t * Math.PI * 3.6 + randRange(rand, -0.45, 0.45);
+        const r = lerp(fontBase * 0.8, fontBase * 4.4, 1 - t);
+        x = Math.cos(a) * r;
+        y = Math.sin(a) * r * 0.92;
+      }
+      else {
+        x = randRange(rand, -fontBase * 4.0, fontBase * 4.0);
+        y = randRange(rand, -fontBase * 2.5, fontBase * 2.5);
+      }
+
+      return { x, y };
+    });
+  }
+
+  function buildEntrance(rand, type, center, fontBase){
+    if(type === "mistRise") return { x:center.x, y:center.y + fontBase * 2.8, spread:fontBase * 4.4 };
+    if(type === "curtain") return { x:center.x, y:-fontBase * 6.5, spread:fontBase * 1.5 };
+    if(type === "spiralIn") return { x:center.x, y:center.y, spread:fontBase * 5.0 };
+    if(type === "burst") return { x:center.x, y:center.y, spread:fontBase * 0.8 };
+    if(type === "sideSweep") return { x:rand() < 0.5 ? -fontBase * 8 : W + fontBase * 8, y:center.y + randRange(rand, -80, 80), spread:fontBase * 1.4 };
+    if(type === "dropChain") return { x:center.x + randRange(rand, -100, 100), y:-fontBase * 5.2, spread:fontBase * 1.3 };
+    if(type === "condense") return { x:center.x, y:center.y + fontBase * 3.0, spread:fontBase * 1.0 };
+    if(type === "corkscrewIn") return { x:center.x, y:center.y, spread:fontBase * 5.8 };
+
+    if(type === "veilDrift"){
+      return {
+        x:center.x + randRange(rand, -fontBase * 1.6, fontBase * 1.6),
+        y:center.y - fontBase * 2.0,
+        spread:fontBase * 3.2
+      };
+    }
+
+    if(type === "gatherSides"){
+      return {
+        x:rand() < 0.5 ? center.x - fontBase * 6.2 : center.x + fontBase * 6.2,
+        y:center.y + randRange(rand, -fontBase * 1.2, fontBase * 1.2),
+        spread:fontBase * 1.7
+      };
+    }
+
+    if(type === "hushBloom"){
+      return {
+        x:center.x + randRange(rand, -fontBase * 0.6, fontBase * 0.6),
+        y:center.y + randRange(rand, -fontBase * 0.6, fontBase * 0.6),
+        spread:fontBase * 0.7
+      };
+    }
+
+    return { x:center.x, y:center.y, spread:fontBase * 1.5 };
+  }
+
+  function applyOrganismMotion(s, dt, now){
+    const len = s.chars.length;
+    if(len <= 1) return;
+
+    if(s.organismStyle === "serpent"){
+      for(let i=0;i<len;i++){
+        const p = s.chars[i];
+        const tailBias = p.role === "tail" ? 1 : 0;
+        const swing = Math.sin(now * 0.0032 + i * 0.38 + s.id * 0.2) * (0.6 + tailBias * s.tailSwing);
+        p.x += swing * 0.55;
+        p.y += Math.cos(now * 0.0022 + i * 0.28) * (0.18 + tailBias * 0.42);
+        p.rot += swing * 0.01;
+      }
+    }
+    else if(s.organismStyle === "flock"){
+      const cx = s.chars.reduce((a,p)=>a+p.x,0) / len;
+      const cy = s.chars.reduce((a,p)=>a+p.y,0) / len;
+      for(const p of s.chars){
+        p.x += (cx - p.x) * 0.014;
+        p.y += (cy - p.y) * 0.008;
+      }
+    }
+    else if(s.organismStyle === "jelly"){
+      const pulse = Math.sin(now * 0.0026 + s.id * 0.4) * 0.5 + 0.5;
+      for(const p of s.chars){
+        const dx = p.x - s.centerX;
+        const dy = p.y - s.centerY;
+        const mul = 1 + (pulse - 0.5) * 0.04;
+        p.x = s.centerX + dx * mul;
+        p.y = s.centerY + dy * mul;
+        p.y += Math.sin(now * 0.002 + p.phase) * 0.22;
+      }
+    }
+    else if(s.organismStyle === "wisp"){
+      for(const p of s.chars){
+        p.x += Math.cos(now * 0.0018 + p.phase) * 0.24;
+        p.y += Math.sin(now * 0.0013 + p.phase * 0.9) * 0.36;
+        p.rot *= 0.985;
+      }
+    }
+    else if(s.organismStyle === "insect"){
+      const jitterOn = Math.sin(now * 0.010 + s.id) > 0.12;
+      if(jitterOn){
+        for(const p of s.chars){
+          p.x += Math.sin(now * 0.036 + p.phase) * 0.35;
+          p.y += Math.cos(now * 0.041 + p.phase) * 0.28;
+        }
+      }
+    }
+    else if(s.organismStyle === "vine"){
+      for(let i=0;i<len;i++){
+        const p = s.chars[i];
+        const t = p.chainT;
+        p.x += Math.sin(now * 0.0016 + t * 3.4) * 0.35;
+        p.y -= t * 0.08;
+      }
+    }
+  }
+
+  function applyChainFollow(s, dt){
+    const len = s.chars.length;
+    if(len <= 1) return;
+
+    for(let i=1;i<len;i++){
+      const prev = s.chars[i - 1];
+      const cur = s.chars[i];
+
+      const desiredGap = s.fontBase * 0.82 * ((prev.visualScale + cur.visualScale) * 0.5);
+      const dx = cur.x - prev.x;
+      const dy = cur.y - prev.y;
+      const d = Math.hypot(dx, dy) || 0.001;
+      const nx = dx / d;
+      const ny = dy / d;
+
+      let stiffness = 0.16;
+      if(cur.role === "head") stiffness = 0.22;
+      else if(cur.role === "spine") stiffness = 0.18;
+      else if(cur.role === "tail") stiffness = 0.10;
+
+      if(s.organismStyle === "serpent") stiffness *= 1.08;
+      if(s.organismStyle === "jelly") stiffness *= 0.78;
+      if(s.organismStyle === "wisp") stiffness *= 0.72;
+
+      const pull = (desiredGap - d) * stiffness;
+      cur.x += nx * pull;
+      cur.y += ny * pull;
+
+      if(cur.role === "tail"){
+        cur.x += (prev.x - cur.x) * 0.012;
+        cur.y += (prev.y - cur.y) * 0.018;
+      }
+    }
+
+    for(let i=1;i<len-1;i++){
+      const prev = s.chars[i - 1];
+      const cur = s.chars[i];
+      const next = s.chars[i + 1];
+      const ax = prev.x + next.x - cur.x * 2;
+      const ay = prev.y + next.y - cur.y * 2;
+      const smooth = cur.role === "spine" ? 0.035 : 0.018;
+      cur.x += ax * smooth;
+      cur.y += ay * smooth;
+    }
+  }
+
+  function applyMicroEvents(s, now){
+    const reform = getReformMix(s.schedule, s.age);
+    const len = s.chars.length;
+    if(len === 0) return;
+
+    if(s.semanticWeight.pause && reform > 0.40 && reform < 0.72){
+      const mid = Math.floor(len / 2);
+      const p = s.chars[mid];
+      p.x += Math.sin(now * 0.010) * 0.8;
+      p.y += Math.cos(now * 0.008) * 0.6;
+      p.visualScale *= 0.992;
+    }
+
+    if(s.semanticWeight.question){
+      const first = s.chars[0];
+      const last = s.chars[len - 1];
+      first.y -= 0.16;
+      last.y -= 0.30;
+    }
+
+    if(s.semanticWeight.exclaim && len >= 2){
+      const last = s.chars[len - 1];
+      last.visualScale *= 1.012;
+      last.y -= 0.14;
+    }
+
+    const pauseT = Math.abs(s.age - s.microPauseAt);
+    if(pauseT < s.microPauseLen){
+      const t = 1 - pauseT / s.microPauseLen;
+      for(let i=0;i<len;i++){
+        const p = s.chars[i];
+        p.x = lerp(p.x, s.centerX + (p.x - s.centerX) * 0.985, t * 0.12);
+        p.y = lerp(p.y, s.centerY + (p.y - s.centerY) * 0.985, t * 0.10);
+      }
+    }
+  }
+
+  function applySpeechRelations(s, dt, now){
+    let nearest = null;
+    let nearestD = Infinity;
+    let clusterX = 0;
+    let clusterY = 0;
+    let count = 0;
+
+    for(const other of state.active){
+      if(other === s) continue;
+      const d = dist(s.centerX, s.centerY, other.centerX, other.centerY);
+      if(d < nearestD){
+        nearestD = d;
+        nearest = other;
+      }
+      clusterX += other.centerX;
+      clusterY += other.centerY;
+      count++;
+    }
+
+    let recent = null;
+    let recentD = Infinity;
+    for(const v of state.recentVoices){
+      const d = dist(s.centerX, s.centerY, v.x, v.y);
+      if(d < recentD){
+        recentD = d;
+        recent = v;
+      }
+    }
+
+    const head = s.chars[0] || null;
+    const intensity = s.relationIntensity || 1;
+
+    if(nearest && nearestD < 300){
+      const dx = nearest.centerX - s.centerX;
+      const dy = nearest.centerY - s.centerY;
+      const d = Math.max(0.001, nearestD);
+      const nx = dx / d;
+      const ny = dy / d;
+      const closeness = 1 - d / 300;
+
+      if(s.relationStyle === "seek"){
+        s.centerX += nx * 0.42 * closeness * intensity;
+        s.centerY += ny * 0.26 * closeness * intensity;
+        if(head){
+          head.x += dx * 0.010 * closeness;
+          head.y += dy * 0.007 * closeness;
+          head.rot += clamp(dx / 260, -0.10, 0.10) * closeness;
+        }
+      } else if(s.relationStyle === "avoid"){
+        s.centerX -= nx * 0.50 * closeness * intensity;
+        s.centerY -= ny * 0.28 * closeness * intensity;
+        if(head){
+          head.x -= dx * 0.008 * closeness;
+          head.y -= dy * 0.005 * closeness;
+          head.rot -= clamp(dx / 260, -0.10, 0.10) * closeness;
+        }
+      } else if(s.relationStyle === "parallel"){
+        s.centerX += (nearest.centerX + nx * 48 - s.centerX) * 0.006 * closeness * intensity;
+        s.centerY += (nearest.centerY - s.centerY) * 0.008 * closeness * intensity;
+        s.vx += (nearest.vx - s.vx) * 0.015 * closeness;
+        s.vy += (nearest.vy - s.vy) * 0.012 * closeness;
+        if(head){
+          const nearRot = nearest.chars[0] ? nearest.chars[0].rot : 0;
+          head.rot += (nearRot - head.rot) * 0.03 * closeness;
+        }
+      } else if(s.relationStyle === "shelter"){
+        const side = nearest.centerX < s.centerX ? 1 : -1;
+        s.centerX += (nearest.centerX + side * 72 - s.centerX) * 0.010 * closeness * intensity;
+        s.centerY += (nearest.centerY + 16 - s.centerY) * 0.008 * closeness * intensity;
+        if(head){
+          head.y += 0.6 * closeness;
+          head.rot *= 0.96;
+        }
+      }
+    }
+
+    if(s.relationStyle === "solitary" && count > 0){
+      clusterX /= count;
+      clusterY /= count;
+      const dx = s.centerX - clusterX;
+      const dy = s.centerY - clusterY;
+      const d = Math.hypot(dx, dy) || 0.001;
+      s.centerX += (dx / d) * 0.22 * intensity;
+      s.centerY += (dy / d) * 0.10 * intensity;
+      if(head) head.rot += clamp(dx / 400, -0.04, 0.04);
+    }
+
+    if(s.relationStyle === "echo" && recent && recentD < 360){
+      const closeness = 1 - recentD / 360;
+      s.centerX += (recent.x - s.centerX) * 0.010 * closeness * intensity;
+      s.centerY += (recent.y - s.centerY) * 0.008 * closeness * intensity;
+      if(head){
+        const dx = recent.x - s.centerX;
+        const dy = recent.y - s.centerY;
+        head.x += dx * 0.004 * closeness;
+        head.y += dy * 0.003 * closeness;
+      }
+      for(let i=0;i<s.chars.length;i++){
+        const p = s.chars[i];
+        const t = s.chars.length <= 1 ? 0 : i / (s.chars.length - 1);
+        p.y += Math.sin(now * 0.0024 + t * Math.PI * 1.6) * 0.10 * closeness;
+      }
+    }
+  }
+
+  function applyDeathMotion(s, endT, now){
+    const len = s.chars.length;
+
+    if(s.deathMode === "fade"){
+      for(const p of s.chars){
+        p.x += Math.sin(s.age * 4.5 + p.phase) * 0.10;
+        p.y -= endT * 0.15;
+      }
+      return;
+    }
+
+    if(s.deathMode === "unravel"){
+      for(let i=0;i<len;i++){
+        const p = s.chars[i];
+        const tailBias = i / Math.max(1, len - 1);
+        const local = clamp((endT - tailBias * 0.16) / 0.84, 0, 1);
+        p.x += Math.sin(now * 0.006 + i * 0.7) * local * 1.4;
+        p.y -= local * 0.9;
+        p.rot += local * 0.03;
+      }
+      return;
+    }
+
+    if(s.deathMode === "exhale"){
+      for(const p of s.chars){
+        const dx = p.x - s.centerX;
+        const dy = p.y - s.centerY;
+        p.x += dx * endT * 0.025;
+        p.y += dy * endT * 0.025 - endT * 0.45;
+      }
+      return;
+    }
+
+    if(s.deathMode === "ascend"){
+      for(const p of s.chars){
+        p.y -= endT * 1.0;
+        p.x += Math.sin(now * 0.003 + p.phase) * 0.20;
+      }
+      return;
+    }
+
+    if(s.deathMode === "sinklessEcho"){
+      for(const p of s.chars){
+        p.x += Math.cos(now * 0.002 + p.phase) * 0.08;
+        p.y -= endT * 0.22;
+        p.visualScale *= (1 - endT * 0.015);
+      }
+    }
+  }
+
+  function createSpeech(lineObj){
+    const { line, index } = lineObj;
+    const seed = hashString(`${index}:${line}:${Date.now()}:${Math.random()}`);
+    const rand = mulberry32(seed);
+    const persona = choice(PERSONAS, rand);
+    const mood = analyzeLineMood(line);
+    const fontBase = getFontBase(line, mood, rand);
+    let center = chooseCenter(performance.now());
+    const life = randRange(rand, 7.0, 8.0);
+    const characterEmphasis = buildCharacterEmphasis(line, mood, rand);
+
+    for(const v of state.recentVoices){
+      const dx = center.x - v.x;
+      const dy = center.y - v.y;
+      const d = Math.hypot(dx, dy) || 0.001;
+      if(d < 260){
+        if(v.mood.question){
+          center.x += (v.x - center.x) * 0.10 * v.strength;
+          center.y += (v.y - center.y) * 0.08 * v.strength;
+        } else if(v.mood.exclaim){
+          center.x += (dx / d) * 18 * v.strength;
+          center.y += (dy / d) * 10 * v.strength;
+        } else if(v.mood.pause){
+          center.y += (v.y - center.y) * 0.06 * v.strength;
+        }
+      }
+    }
+
+    const organismStyles = [
+      { value:"serpent", weight:28 },
+      { value:"flock", weight:20 },
+      { value:"jelly", weight:18 },
+      { value:"wisp", weight:16 },
+      { value:"insect", weight:10 },
+      { value:"vine", weight:8 }
+    ];
+
+    const deathModes = [
+      { value:"fade", weight:22 },
+      { value:"unravel", weight:24 },
+      { value:"exhale", weight:20 },
+      { value:"ascend", weight:22 },
+      { value:"sinklessEcho", weight:12 }
+    ];
+
+    const organismStyle = choiceWeighted(rand, organismStyles);
+    const deathMode = choiceWeighted(rand, deathModes);
+
+    const relationStyles = [
+      { value:"seek", weight: mood.question ? 24 : 15 },
+      { value:"avoid", weight: mood.exclaim ? 18 : 10 },
+      { value:"parallel", weight: mood.softness > 0.45 ? 18 : 12 },
+      { value:"shelter", weight: mood.pause ? 16 : 10 },
+      { value:"solitary", weight: mood.hardness > 0.45 ? 14 : 9 },
+      { value:"echo", weight: mood.pause || mood.question ? 16 : 8 }
+    ];
+
+    const relationStyle = choiceWeighted(rand, relationStyles);
+
+    let shapePool = [...persona.shapes];
+    if([...line].length <= 7 || mood.pause || persona.key === "solemn"){
+      shapePool.push("verticalLine", "verticalSoftArc", "leaningColumn");
+    }
+    if(mood.question || mood.exclaim){
+      shapePool.push("verticalWave", "fanArc", "canyonWave", "spiralShell");
+    }
+    if(mood.short && rand() < 0.5){
+      shapePool.push("verticalLine", "shallowArc", "spiralNest");
+    }
+
+    if(organismStyle === "serpent"){
+      shapePool.push("wave","doubleWave","canyonWave","leaningColumn","spiralShell");
+    }
+    if(organismStyle === "jelly"){
+      shapePool.push("openRing","ellipseWave","fanArc","spiralNest");
+    }
+    if(organismStyle === "vine"){
+      shapePool.push("verticalLine","verticalSoftArc","leaningColumn");
+    }
+    if(organismStyle === "wisp"){
+      shapePool.push("softArc","shallowArc","ellipseWave","spiralNest");
+    }
+    if(organismStyle === "insect"){
+      shapePool.push("zigArc","canyonWave","verticalWave");
+    }
+
+    const shapeName = choice(shapePool, rand);
+    const lineTargets = makeReadablePath(line, fontBase, rand, shapeName);
+    const preMode = choice(persona.swims, rand);
+    const preTargets = buildPreTargets(line, fontBase, rand, preMode);
+    const entranceType = choice(persona.entrances, rand);
+    const entrance = buildEntrance(rand, entranceType, center, fontBase);
+
+    const lineChars = [...line];
+    const chars = lineChars.map((ch, i) => {
+      const kind = detectKind(ch);
+      const role = roleForIndex(i, lineChars.length);
+      const t = chainRatio(i, lineChars.length);
+
+      return {
+        ch,
+        kind,
+        role,
+        chainT: t,
+        x: entrance.x + randRange(rand, -entrance.spread, entrance.spread),
+        y: entrance.y + randRange(rand, -entrance.spread, entrance.spread),
+        tx: center.x,
+        ty: center.y,
+        rot: randRange(rand, -0.9, 0.9),
+        phase: randRange(rand, 0, Math.PI * 2),
+        sizeScale: sizeScaleForKind(kind, lineChars.length, rand) * characterEmphasis[i],
+        emphasis:
+          rand() < 0.18 ? randRange(rand, 1.18, 1.42) :
+          (role === "head" ? randRange(rand, 1.02, 1.16) :
+          role === "tail" ? randRange(rand, 0.96, 1.10) :
+          randRange(rand, 0.94, 1.06)),
+        lag: i * randRange(rand, 0.008, 0.03),
+        visualScale: 1,
+        followX: 0,
+        followY: 0,
+        bend: 0
+      };
+    });
+
+    return {
+      id: ++state.speechSeq,
+      text: line,
+      centerX: center.x,
+      centerY: center.y,
+      vx: randRange(rand, -10, 10),
+      vy: randRange(rand, -6, 6),
+      snowPhase: randRange(rand, 0, Math.PI * 2),
+      life,
+      age: 0,
+      opacity: 0,
+      fontBase,
+      color: persona.color,
+      persona,
+      chars,
+      preTargets,
+      lineTargets,
+      preMode,
+      schedule: buildReformSchedule(rand, life, persona.reformBias),
+      entranceType,
+      entranceDuration: randRange(rand, 0.9, 1.6),
+      waveFreq: randRange(rand, 0.7, 1.9),
+      waveAmp: randRange(rand, persona.wave[0], persona.wave[1]),
+      respirationRate: randRange(rand, 0.8, 1.3),
+      respirationDepth: randRange(rand, 0.018, 0.045),
+      respirationPhase: randRange(rand, 0, Math.PI * 2),
+      respirationJitter: randRange(rand, 0.08, 0.22),
+      hesitationCenter: randRange(rand, life * 0.28, life * 0.62),
+      hesitationDuration: randRange(rand, 0.35, 0.8),
+      semanticWeight: mood,
+      isHero: false,
+      heroRevealBoost: 0,
+      heroVerticalBoost:
+        shapeName === "verticalLine" || shapeName === "verticalSoftArc" || shapeName === "verticalWave" || shapeName === "leaningColumn",
+      shapeName,
+      staggerFail: Math.random() < 0.28,
+      organismStyle,
+      deathMode,
+      chainBreathDir: mood.question ? -1 : 1,
+      chainBreathSpan: randRange(rand, 0.9, 1.7),
+      tailSwing: randRange(rand, 0.6, 1.5),
+      microPauseAt: randRange(rand, life * 0.26, life * 0.68),
+      microPauseLen: randRange(rand, 0.18, 0.55),
+      syncBias: randRange(rand, 0.0, 1.0),
+      relationStyle,
+      relationIntensity: randRange(rand, 0.65, 1.18)
+    };
+  }
+
+  function buildReformSchedule(rand, life, bias){
+    const count = 1 + Math.floor(rand() * 3);
+    const schedule = [];
+    for(let i=0;i<count;i++){
+      schedule.push({
+        center: randRange(rand, 0.16, 0.84) * life,
+        duration: randRange(rand, 0.8, 1.5) * bias
+      });
+    }
+    return schedule.sort((a, b) => a.center - b.center);
+  }
+
+  function getReformMix(schedule, age){
+    let best = 0;
+    for(const item of schedule){
+      const d = Math.abs(age - item.center);
+      const t = clamp(1 - d / item.duration, 0, 1);
+      best = Math.max(best, easeOutCubic(t));
+    }
+    return best;
+  }
+
+  function getHesitationMix(s){
+    const d = Math.abs(s.age - s.hesitationCenter);
+    const t = clamp(1 - d / s.hesitationDuration, 0, 1);
+    return Math.sin(t * Math.PI) * Math.sin(t * Math.PI);
+  }
+
+  function storeLines(){
+    const checked = validateInput(textInput.value);
+    if(!checked.ok){
+      message.textContent = checked.message;
+      return;
+    }
+    state.lines = checked.lines;
+    state.backdropText = backdropInput.value.trim();
+    state.backdropActors = createBackdropActors(state.backdropText);
+    refillBag();
+    state.active = [];
+    state.phase = "ready";
+    message.textContent = "";
+    inputScreen.style.display = "none";
+    playScreen.style.display = "block";
+  }
+
+  function beginPlay(now){
+    state.phase = "playing";
+    state.active = [];
+    state.playStartedAt = now;
+    state.rhythmIndex = -1;
+    state.rhythmSegment = null;
+    state.rhythmProgress = 0;
+    state.backdropMemory.tension = 0;
+    state.backdropMemory.softness = 0;
+    state.backdropMemory.question = 0;
+    state.backdropMemory.pulse = 0;
+    state.backdropMemory.resonance = 0;
+    state.backdropMemory.glow = 0;
+    state.backdropMemory.drift = 0;
+    if(state.backdropText){
+      state.backdropActors = createBackdropActors(state.backdropText);
+    }
+    chooseScene(now);
+    spawnOne(now);
+    spawnOne(now + 1);
+    state.nextSpawnAt = now + 550;
+  }
+
+  function spawnOne(now){
+    const lineObj = takeRandomLine();
+    if(!lineObj) return;
+
+    const speech = createSpeech(lineObj);
+    const heroNow = maybeAssignHero(now);
+    if(heroNow){
+      speech.isHero = true;
+      speech.heroRevealBoost = 0.32;
+      speech.centerX = W * 0.5 + (Math.random() - 0.5) * 40;
+      speech.centerY = H * 0.34 + (Math.random() - 0.5) * 26;
+      speech.vx *= 0.35;
+      speech.vy *= 0.25;
+      state.heroSpeechId = speech.id;
+    }
+
+    state.active.push(speech);
+    state.nextSpawnAt = now + 250 + Math.random() * 950;
+  }
+
+  function applySpeechSocialForce(s, dt, now){
+    let ax = 0;
+    let ay = 0;
+
+    for(const other of state.active){
+      if(other === s) continue;
+      const dx = other.centerX - s.centerX;
+      const dy = other.centerY - s.centerY;
+      const d = Math.hypot(dx, dy) || 0.001;
+
+      if(d < 220){
+        ax -= (dx / d) * (220 - d) * 0.08;
+        ay -= (dy / d) * (220 - d) * 0.05;
+      } else if(d < 420 && state.scene === "chorus"){
+        ax += (dx / d) * 0.45;
+        ay += (dy / d) * 0.18;
+      } else if(d < 360 && state.scene === "reveal"){
+        ax -= (dx / d) * 0.12;
+        ay -= (dy / d) * 0.10;
+      }
+    }
+
+    if(state.scene === "reveal"){
+      ax += (W * 0.5 - s.centerX) * 0.0026;
+      ay += (H * 0.38 - s.centerY) * 0.0028;
+    }
+
+    if(state.scene === "cascade"){
+      ay -= 1.2;
+    }
+
+    s.vx += ax * dt * 60;
+    s.vy += ay * dt * 60;
+  }
+
+  function updateBackgroundState(){
+    const c = state.bgCurrent;
+    const t = state.bgTarget;
+
+    c.fog += (t.fog - c.fog) * 0.025;
+    c.flow += (t.flow - c.flow) * 0.025;
+    c.warmth += (t.warmth - c.warmth) * 0.025;
+    c.focusX += (t.focusX - c.focusX) * 0.025;
+    c.focusY += (t.focusY - c.focusY) * 0.025;
+    c.focusA += (t.focusA - c.focusA) * 0.025;
+  }
+
+  function updateSpeech(s, dt, now){
+    s.age += dt;
+    const tLife = clamp(s.age / s.life, 0, 1);
+
+    let fade = 1;
+    if(tLife < 0.10) fade = ease(tLife / 0.10);
+    else if(tLife > 0.82) fade = 1 - ease((tLife - 0.82) / 0.18);
+
+    const breathBase = s.age * (1.7 * s.respirationRate) + s.respirationPhase;
+    const breath = Math.sin(breathBase) * s.respirationDepth;
+    const breath2 = Math.sin(breathBase * (1.97 + s.respirationJitter)) * s.respirationDepth * 0.55;
+    const breathMix = breath + breath2;
+
+    s.opacity = fade * (0.95 + breathMix * 0.6);
+
+    if(state.scene === "chorus"){
+      s.respirationPhase += Math.sin(now * 0.001 + s.id * 0.7) * 0.002;
+    }
+
+    for(const other of state.active){
+      if(other === s) continue;
+      const d = dist(s.centerX, s.centerY, other.centerX, other.centerY);
+      if(d < 180){
+        const sync = 1 - d / 180;
+        const relationSync =
+          s.relationStyle === "parallel" ? 1.7 :
+          s.relationStyle === "seek" ? 1.15 :
+          s.relationStyle === "shelter" ? 1.1 :
+          1.0;
+        s.respirationPhase += (other.respirationPhase - s.respirationPhase) * 0.002 * sync * (0.4 + s.syncBias * 0.6) * relationSync;
+        break;
+      }
+    }
+
+    applySpeechSocialForce(s, dt, now);
+
+    const snowDrift = Math.sin(s.age * 1.4 + s.snowPhase) * 10 + Math.sin(s.age * 0.46 + s.snowPhase * 0.7) * 18;
+    s.vx += snowDrift * dt * 0.55;
+
+    const sceneFlowX =
+      state.scene === "chorus" ? Math.sin(now * 0.00045 + s.id * 0.3) * 0.55 :
+      state.scene === "reveal" ? Math.sin(now * 0.00035 + s.id * 0.5) * 0.20 :
+      state.scene === "cascade" ? Math.sin(now * 0.00055 + s.id * 0.4) * 0.38 :
+      Math.sin(now * 0.00040 + s.id * 0.4) * 0.32;
+
+    const sceneFlowY =
+      state.scene === "reveal" ? -0.10 :
+      state.scene === "cascade" ? -0.05 :
+      state.scene === "chorus" ? -0.04 : -0.01;
+
+    if(s.isHero){
+      s.vx *= 0.996;
+      s.vy *= 0.994;
+    }
+
+    s.vx += sceneFlowX * dt * 60;
+    s.vy += sceneFlowY * dt * 60;
+
+    s.vx *= Math.pow(s.persona.drag, dt * 60);
+    s.vy *= Math.pow(s.persona.drag, dt * 60);
+
+    s.centerX += s.vx * dt;
+    s.centerY += s.vy * dt;
+
+    const steerX = W * 0.5 - s.centerX;
+    const steerY = H * 0.42 - s.centerY;
+    s.vx += steerX * 0.0009;
+    s.vy += steerY * 0.0006;
+
+    if(s.centerX < 50) s.vx += 0.9;
+    if(s.centerX > W - 50) s.vx -= 0.9;
+    if(s.centerY < 60) s.vy += 0.55;
+    if(s.centerY > H - 80) s.vy -= 1.15;
+
+    const reform = getReformMix(s.schedule, s.age);
+    const hesitation = getHesitationMix(s);
+    const entranceT = clamp(s.age / s.entranceDuration, 0, 1);
+    const entranceMix = easeOutCubic(entranceT);
+    const heroBoost = s.isHero ? s.heroRevealBoost : 0;
+    const reformShown = clamp(reform + heroBoost, 0, 1);
+
+    for(let i=0;i<s.chars.length;i++){
+      const p = s.chars[i];
+      const pre = s.preTargets[i];
+      const line = s.lineTargets[i];
+
+      const chainPhase =
+        s.age * (1.7 * s.respirationRate) +
+        p.chainT * s.chainBreathSpan * s.chainBreathDir +
+        p.phase * 0.18;
+
+      const chainBreath =
+        Math.sin(chainPhase) * s.respirationDepth * 1.45 +
+        Math.sin(chainPhase * (1.88 + s.respirationJitter * 0.8)) * s.respirationDepth * 0.62;
+
+      let motionX = 0;
+      let motionY = 0;
+      const baseA = s.age * (1.0 + s.waveFreq * 0.7) + p.phase;
+
+      if(s.preMode === "orbit"){
+        motionX = Math.cos(baseA) * s.waveAmp * 0.85;
+        motionY = Math.sin(baseA) * s.waveAmp * 0.55;
+      } else if(s.preMode === "breath"){
+        const b = 1 + Math.sin(s.age * 2.1 + p.phase) * 0.25;
+        motionX = pre.x * (b - 1);
+        motionY = pre.y * (b - 1);
+      } else if(s.preMode === "pendulum"){
+        motionX = Math.sin(baseA) * s.waveAmp * 1.1;
+        motionY = Math.cos(baseA * 0.6) * s.waveAmp * 0.35;
+      } else if(s.preMode === "float"){
+        motionX = Math.cos(baseA * 0.9) * s.waveAmp * 0.6;
+        motionY = Math.sin(baseA * 0.7) * s.waveAmp * 0.45;
+      } else if(s.preMode === "zigzag"){
+        motionX = Math.sin(baseA * 1.8) * s.waveAmp * 0.8;
+        motionY = Math.cos(baseA * 0.9) * s.waveAmp * 0.2;
+      } else if(s.preMode === "dash"){
+        motionX = Math.cos(baseA) * s.waveAmp * 1.3;
+        motionY = Math.sin(baseA * 0.8) * s.waveAmp * 0.25;
+      } else if(s.preMode === "flutter"){
+        motionX = Math.cos(baseA * 2.0) * s.waveAmp * 0.75;
+        motionY = Math.sin(baseA * 1.8) * s.waveAmp * 0.65;
+      } else if(s.preMode === "hop"){
+        motionX = Math.sin(baseA * 0.8) * s.waveAmp * 0.4;
+        motionY = -Math.abs(Math.sin(baseA * 1.4)) * s.waveAmp * 0.95;
+      } else if(s.preMode === "glide"){
+        motionX = Math.cos(baseA * 0.7) * s.waveAmp * 0.55;
+        motionY = Math.sin(baseA * 0.6) * s.waveAmp * 0.2;
+      } else if(s.preMode === "snake"){
+        motionX = Math.cos(baseA * 0.9) * s.waveAmp * 0.6;
+        motionY = Math.sin(baseA * 1.4) * s.waveAmp * 0.7;
+      } else if(s.preMode === "ribbon"){
+        motionX = Math.cos(baseA * 1.2) * s.waveAmp * 0.7;
+        motionY = Math.sin(baseA * 1.1 + p.chainT * 2.2) * s.waveAmp * 0.42;
+      } else if(s.preMode === "comet"){
+        motionX = Math.cos(baseA) * s.waveAmp * (1.0 - p.chainT * 0.55);
+        motionY = Math.sin(baseA * 0.75) * s.waveAmp * 0.25;
+      } else if(s.preMode === "halo"){
+        motionX = Math.cos(baseA + p.chainT * Math.PI * 2) * s.waveAmp * 0.52;
+        motionY = Math.sin(baseA + p.chainT * Math.PI * 2) * s.waveAmp * 0.52;
+      }
+
+      const semanticLift = s.semanticWeight.question ? -6 : 0;
+      const softnessY = s.semanticWeight.softness * 7;
+      const hardnessY = s.semanticWeight.hardness * -4;
+
+      const preX = s.centerX + pre.x + motionX;
+      const preY = s.centerY + pre.y + motionY + semanticLift - softnessY + hardnessY;
+
+      const breatheSpacing = 1 + chainBreath * (p.kind === "hiragana" ? 1.7 : p.kind === "kanji" ? 0.85 : 1.15);
+      const lineX = s.centerX + line.x * breatheSpacing + Math.cos(chainPhase) * 0.7;
+      const lineY = s.centerY + line.y + Math.sin(chainPhase) * 1.2;
+
+      const baseX = lerp(p.x, preX, 0.08 + entranceMix * 0.16);
+      const baseY = lerp(p.y, preY, 0.08 + entranceMix * 0.16);
+
+      const hesitationPush = hesitation * (i % 2 === 0 ? 1 : -1) * s.fontBase * 0.12;
+
+      let charReform = reformShown;
+      if(s.staggerFail && i >= s.chars.length - 2){
+        charReform *= 0.72;
+      }
+
+      p.tx = lerp(baseX, lineX + hesitationPush, charReform * s.persona.lineBias);
+      p.ty = lerp(baseY, lineY - hesitation * s.fontBase * 0.06, charReform * s.persona.lineBias);
+
+      const settle = charReform > 0.42 ? 0.22 : 0.10 + entranceMix * 0.08;
+      p.x = lerp(p.x, p.tx, settle);
+      p.y = lerp(p.y, p.ty, settle);
+
+      const targetRot = lerp(Math.sin(s.age * 1.2 + p.phase) * 0.28, 0, charReform * (1 - hesitation * 0.35));
+      p.rot = lerp(p.rot, targetRot, 0.12);
+
+      let kindBreath = 1;
+      if(p.kind === "hiragana") kindBreath = 1 + chainBreath * 1.15;
+      else if(p.kind === "kanji") kindBreath = 1 + chainBreath * 0.55;
+      else kindBreath = 1 + chainBreath * 0.82;
+
+      p.visualScale =
+        lerp(0.76, 1.0 + Math.sin(s.age * 1.5 + p.phase) * 0.03, entranceMix) *
+        p.sizeScale *
+        p.emphasis *
+        kindBreath;
+
+      if(s.entranceType === "dropChain" && entranceT < 1){
+        const lagT = clamp((entranceT - p.lag * 10), 0, 1);
+        p.y = lerp(-s.fontBase * 5.0, p.ty, easeOutCubic(lagT));
+      }
+      if(s.entranceType === "spiralIn" && entranceT < 1){
+        const spiralR = lerp(s.fontBase * 4.8, dist(p.tx, p.ty, s.centerX, s.centerY), entranceT);
+        const a = s.age * 5.8 + i * 0.55;
+        p.x = lerp(s.centerX + Math.cos(a) * spiralR, p.tx, entranceMix * 0.5);
+        p.y = lerp(s.centerY + Math.sin(a) * spiralR, p.ty, entranceMix * 0.5);
+      }
+      if(s.entranceType === "corkscrewIn" && entranceT < 1){
+        const spiralR = lerp(s.fontBase * (4.8 - p.chainT * 1.3), dist(p.tx, p.ty, s.centerX, s.centerY) * 0.45, entranceT);
+        const a = s.age * 7.4 + i * 0.48 + p.chainT * Math.PI * 2.4;
+        p.x = lerp(s.centerX + Math.cos(a) * spiralR, p.tx, entranceMix * 0.62);
+        p.y = lerp(s.centerY + Math.sin(a) * spiralR * 0.88, p.ty, entranceMix * 0.62);
+        p.rot = lerp(p.rot, Math.sin(a) * 0.26, 0.18);
+      }
+      if(s.entranceType === "mistRise" && entranceT < 1){
+        p.x += Math.cos(s.age * 1.8 + i) * (1 - entranceMix) * 6;
+        p.y += Math.sin(s.age * 1.5 + i * 0.6) * (1 - entranceMix) * 4;
+      }
+      if(s.entranceType === "condense" && entranceT < 1){
+        p.x = lerp(s.centerX, p.tx, entranceMix * 0.72);
+        p.y = lerp(s.centerY + s.fontBase * 2.2, p.ty, entranceMix * 0.72);
+      }
+      if(s.entranceType === "veilDrift" && entranceT < 1){
+        p.x += Math.cos(s.age * 1.2 + i * 0.5) * (1 - entranceMix) * 3.4;
+        p.y += Math.sin(s.age * 1.0 + i * 0.4) * (1 - entranceMix) * 2.6;
+      }
+      if(s.entranceType === "gatherSides" && entranceT < 1){
+        const startX = p.x < s.centerX ? s.centerX - s.fontBase * 5.2 : s.centerX + s.fontBase * 5.2;
+        p.x = lerp(startX, p.tx, entranceMix * 0.82);
+      }
+      if(s.entranceType === "hushBloom" && entranceT < 1){
+        p.x = lerp(s.centerX, p.tx, entranceMix * 0.58);
+        p.y = lerp(s.centerY, p.ty, entranceMix * 0.58);
+        p.visualScale *= 0.92 + entranceMix * 0.08;
+      }
+      if(s.entranceType === "curtain" && entranceT < 1){
+        const lagT = clamp((entranceT - p.lag * 5), 0, 1);
+        p.y = lerp(-s.fontBase * 4.4, p.ty, easeOutCubic(lagT));
+      }
+    }
+
+    applyOrganismMotion(s, dt, now);
+    applyChainFollow(s, dt);
+    applyMicroEvents(s, now);
+    applySpeechRelations(s, dt, now);
+
+    if(tLife > 0.82){
+      const endT = clamp((tLife - 0.82) / 0.18, 0, 1);
+      applyDeathMotion(s, endT, now);
+    }
+  }
+
+  function drawBackgroundWraiths(now, bg){
+    const visual = getSceneVisualWeights();
+    const mem = state.backdropMemory;
+    const count = 2;
+
+    for(let i=0;i<count;i++){
+      const phase = now * (0.000045 + i * 0.000006) + i * 2.4;
+      const x = W * (0.18 + i * 0.34) + Math.sin(phase * 1.3) * (38 + i * 12) + Math.cos(phase * 0.4) * 18;
+      const y = H * (0.20 + i * 0.22) + Math.cos(phase * 1.1) * (22 + i * 8) + Math.sin(phase * 0.55) * 12;
+      const rx = 120 + i * 54 + Math.sin(phase * 0.8) * 10;
+      const ry = 54 + i * 18 + Math.cos(phase * 0.9) * 6;
+      const alpha = visual.wraithAlpha * (0.55 + mem.softness * 0.02 + mem.resonance * 0.012) * (0.7 + i * 0.16);
+
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(Math.sin(phase * 0.35) * 0.16 + i * 0.08);
+      ctx.scale(1 + Math.sin(phase * 0.7) * 0.04, 1 + Math.cos(phase * 0.5) * 0.03);
+
+      const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, rx);
+      grad.addColorStop(0, `rgba(220,232,255,${alpha})`);
+      grad.addColorStop(0.38, `rgba(205,220,248,${alpha * 0.42})`);
+      grad.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  function drawBackgroundStars(now){
+    const visual = getSceneVisualWeights();
+    const mem = state.backdropMemory;
+    const starCount = Math.max(10, Math.floor(18 + visual.starDensity * 22));
+
+    for(let i=0;i<starCount;i++){
+      const seed = i * 9283.17;
+      const x = ((Math.sin(seed * 1.13) * 0.5 + 0.5) * 0.84 + 0.08) * W;
+      const y = ((Math.cos(seed * 1.71) * 0.5 + 0.5) * 0.70 + 0.04) * H;
+      const tw = Math.sin(now * (0.0008 + (i % 7) * 0.00009) + seed);
+      const rare = Math.sin(now * (0.00019 + (i % 5) * 0.00003) + seed * 0.37);
+      const flash = Math.max(0, tw * 0.5 + 0.5 - 0.82) * (1.2 + visual.starTwinkle);
+      const burst = Math.max(0, rare * 0.5 + 0.5 - 0.965) * 4.6;
+      const alpha = (0.010 + flash * 0.09 + burst * 0.14) * (0.8 + mem.glow * 0.15);
+      if(alpha < 0.007) continue;
+
+      const r = 0.8 + (i % 3) * 0.35 + burst * 1.4;
+      const grad = ctx.createRadialGradient(x, y, 0, x, y, r * 5.2);
+      const warm = i % 4 === 0;
+      if(warm){
+        grad.addColorStop(0, `rgba(255,246,228,${alpha})`);
+        grad.addColorStop(0.45, `rgba(245,228,205,${alpha * 0.34})`);
+      } else {
+        grad.addColorStop(0, `rgba(230,238,255,${alpha})`);
+        grad.addColorStop(0.45, `rgba(205,220,248,${alpha * 0.34})`);
+      }
+      grad.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(x, y, r * 5.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function drawBackground(now){
+    updateBackgroundState();
+
+    const bg = state.bgCurrent;
+
+    const topR = Math.round(23 + bg.warmth * 28);
+    const topG = Math.round(27 + bg.warmth * 18);
+    const topB = Math.round(35 + Math.max(0, -bg.warmth) * 10);
+
+    const bottomR = Math.round(10 + bg.warmth * 10);
+    const bottomG = Math.round(13 + bg.warmth * 8);
+    const bottomB = Math.round(18 + Math.max(0, -bg.warmth) * 12);
+
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, `rgb(${topR},${topG},${topB})`);
+    g.addColorStop(1, `rgb(${bottomR},${bottomG},${bottomB})`);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+
+    drawBackgroundWraiths(now, bg);
+
+    const glowCount = Math.round(22 + bg.fog * 50);
+    for(let i=0;i<glowCount;i++){
+      const x = (i * 139 + now * (bg.flow + (i % 5) * 0.0017)) % (W + 220) - 110;
+      const y = 30 + (i * 61) % (H - 60);
+      const r = 14 + (i % 6) * 8;
+      const alpha = 0.015 + bg.fog * 0.05;
+      const grad = ctx.createRadialGradient(x, y, 0, x, y, r);
+      grad.addColorStop(0, `rgba(255,255,255,${alpha})`);
+      grad.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    drawBackgroundStars(now);
+
+    const fx = W * bg.focusX;
+    const fy = H * bg.focusY;
+    const fg = ctx.createRadialGradient(fx, fy, 0, fx, fy, H * 0.24);
+    fg.addColorStop(0, `rgba(255,245,225,${bg.focusA})`);
+    fg.addColorStop(1, "rgba(255,245,225,0)");
+    ctx.fillStyle = fg;
+    ctx.fillRect(0, 0, W, H);
+
+    if(state.backdropActors.length){
+      const mem = state.backdropMemory;
+      const segment = state.rhythmSegment || { backdropGlow:0.10, backdropResonance:0.14 };
+      const titleActor = state.backdropActors.find(actor => actor.isTitle) || state.backdropActors[0];
+      if(titleActor){
+        const auraR = Math.max(W * 0.14, titleActor.totalWidth * 0.72);
+        const aura = ctx.createRadialGradient(titleActor.x, titleActor.y, 0, titleActor.x, titleActor.y, auraR);
+        const auraAlpha = 0.03 + segment.backdropGlow * 0.07 + mem.glow * 0.05;
+        aura.addColorStop(0, `rgba(255,244,232,${auraAlpha})`);
+        aura.addColorStop(0.45, `rgba(220,232,255,${auraAlpha * 0.45})`);
+        aura.addColorStop(1, "rgba(255,255,255,0)");
+        ctx.fillStyle = aura;
+        ctx.fillRect(titleActor.x - auraR, titleActor.y - auraR, auraR * 2, auraR * 2);
+      }
+    }
+
+    for(const e of state.echoes){
+      const age = Math.min(1, (performance.now() - e.bornAt) / 8000);
+      const a = (1 - age) * 0.028 * e.strength;
+      if(a <= 0.002) continue;
+      const rg = ctx.createRadialGradient(e.x, e.y, 0, e.x, e.y, 90);
+      rg.addColorStop(0, `rgba(255,255,255,${a})`);
+      rg.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = rg;
+      ctx.fillRect(e.x - 90, e.y - 90, 180, 180);
+    }
+  }
+
+  function roundRect(x, y, w, h, r){
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  function drawReady(now){
+    state.showPulse = Math.sin(now * 0.0016) * 0.5 + 0.5;
+    const text = "SHOW MUST GO ON";
+    const size = 58 + state.showPulse * 4;
+    const y = H * 0.5;
+    ctx.save();
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = `700 ${size}px "Yu Mincho","Hiragino Mincho ProN",serif`;
+    const width = ctx.measureText(text).width;
+    state.showRect = { x: W/2 - width/2 - 28, y: y - size/2 - 24, w: width + 56, h: size + 48 };
+
+    ctx.fillStyle = "rgba(255,255,255,0.045)";
+    roundRect(state.showRect.x, state.showRect.y, state.showRect.w, state.showRect.h, 22);
+    ctx.fill();
+
+    ctx.fillStyle = "rgba(255,255,255,0.16)";
+    ctx.fillText(text, W/2 + 3, y + 4);
+    ctx.fillStyle = "rgba(255,245,232,0.96)";
+    ctx.fillText(text, W/2, y);
+    ctx.font = '14px "Yu Gothic","Hiragino Kaku Gothic ProN",sans-serif';
+    ctx.fillStyle = "rgba(255,255,255,0.55)";
+    ctx.fillText("click or tap", W/2, y + 66);
+    ctx.restore();
+  }
+
+  function drawSpeech(s){
+    const reform = getReformMix(s.schedule, s.age);
+    const revealGlow = reform * 0.22 + (s.isHero ? 0.12 : 0);
+    const heroActive = performance.now() < state.heroUntil && state.heroSpeechId !== null;
+    const isBackgroundActor = heroActive && !s.isHero;
+    const localOpacity = s.opacity * (s.isHero ? 1.08 : (isBackgroundActor ? 0.78 : 1.0));
+
+    for(const p of s.chars){
+      const size = s.fontBase * p.visualScale;
+      if(!Number.isFinite(p.x) || !Number.isFinite(p.y) || !Number.isFinite(size)) continue;
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.font = `${size}px "Yu Mincho","Hiragino Mincho ProN","MS Mincho",serif`;
+
+      ctx.fillStyle = withAlpha(s.color, localOpacity * (0.10 + revealGlow));
+      ctx.fillText(p.ch, 2.0, 2.6);
+
+      if(revealGlow > 0.08){
+        ctx.fillStyle = withAlpha("#ffffff", localOpacity * revealGlow * 0.22);
+        ctx.fillText(p.ch, 0, 0);
+      }
+
+      ctx.fillStyle = withAlpha(s.color, localOpacity);
+      ctx.fillText(p.ch, 0, 0);
+      ctx.restore();
+    }
+  }
+
+  function update(now){
+    const dt = clamp((now - state.lastTime) / 1000, 0.001, 0.033);
+    state.lastTime = now;
+
+    if(state.phase === "playing"){
+      chooseScene(now);
+
+      maybeStartQuietAndHero(now);
+      updateBackdropActors(dt, now);
+      updateBackdropParticles(dt);
+
+      if(now >= state.quietUntil && state.active.length < state.targetConcurrent && now >= state.nextSpawnAt){
+        spawnOne(now);
+      }
+
+      const survivors = [];
+      for(const s of state.active){
+        updateSpeech(s, dt, now);
+
+        const expired = s.age >= s.life;
+
+        if(!expired){
+          survivors.push(s);
+        } else {
+          state.echoes.push({
+            x: s.centerX,
+            y: Math.min(s.centerY, H - 10),
+            strength: 1,
+            bornAt: now
+          });
+          state.recentVoices.push({
+            x: s.centerX,
+            y: s.centerY,
+            bornAt: now,
+            mood: s.semanticWeight,
+            text: s.text,
+            strength: 1
+          });
+          if(state.recentVoices.length > 12) state.recentVoices.shift();
+          if(s.id === state.heroSpeechId){
+            state.heroSpeechId = null;
+          }
+        }
+      }
+      state.active = survivors;
+
+      state.echoes = state.echoes.filter(e => now - e.bornAt < 8000);
+      for(const e of state.echoes){
+        e.strength *= 0.992;
+      }
+
+      state.recentVoices = state.recentVoices.filter(v => now - v.bornAt < 9000);
+      for(const v of state.recentVoices){
+        v.strength *= 0.992;
+      }
+
+      let tension = 0;
+      let softness = 0;
+      let question = 0;
+      let resonance = 0;
+      let drift = 0;
+
+      for(const s of state.active){
+        tension += (s.semanticWeight.exclaim ? 1 : 0) + (s.semanticWeight.hardness || 0) * 0.7;
+        softness += (s.semanticWeight.softness || 0) + (s.semanticWeight.pause ? 0.4 : 0);
+        question += s.semanticWeight.question ? 1 : 0;
+        resonance += (s.isHero ? 0.9 : 0.36) + getReformMix(s.schedule, s.age) * 0.42;
+        drift += (s.preMode === "orbit" || s.preMode === "breath" || s.preMode === "float" || s.preMode === "halo" ? 0.38 : 0.18) + (s.semanticWeight.pause ? 0.14 : 0);
+      }
+
+      for(const v of state.recentVoices){
+        const age = 1 - Math.min(1, (now - v.bornAt) / 9000);
+        tension += ((v.mood.exclaim ? 1 : 0) + (v.mood.hardness || 0) * 0.5) * age * 0.45;
+        softness += ((v.mood.softness || 0) + (v.mood.pause ? 0.3 : 0)) * age * 0.45;
+        question += (v.mood.question ? 1 : 0) * age * 0.45;
+        resonance += age * (v.mood.question ? 0.18 : 0.10);
+        drift += age * (v.mood.pause ? 0.12 : 0.06);
+      }
+
+      const segment = state.rhythmSegment || { backdropDrift:0.22, backdropGlow:0.10, backdropResonance:0.14 };
+      state.backdropMemory.tension += (tension - state.backdropMemory.tension) * 0.03;
+      state.backdropMemory.softness += (softness - state.backdropMemory.softness) * 0.03;
+      state.backdropMemory.question += (question - state.backdropMemory.question) * 0.03;
+      state.backdropMemory.resonance += ((resonance + segment.backdropResonance * 3.6) - state.backdropMemory.resonance) * 0.025;
+      state.backdropMemory.glow += ((segment.backdropGlow + state.backdropMemory.question * 0.05 + Math.min(1.1, resonance * 0.06)) - state.backdropMemory.glow) * 0.028;
+      state.backdropMemory.drift += ((drift + segment.backdropDrift * 2.8 + state.backdropMemory.softness * 0.04) - state.backdropMemory.drift) * 0.026;
+      state.backdropMemory.pulse = Math.sin(now * 0.0012 + state.rhythmProgress * Math.PI * 2) * 0.5 + 0.5;
+    }
+  }
+
+  function render(now){
+    if(playScreen.style.display === "none") return;
+
+    drawBackground(now);
+
+    if(state.phase === "ready"){
+      drawReadyBackdrop(now);
+      drawReady(now);
+      return;
+    }
+
+    drawBackdropActors(now);
+    drawBackdropParticles(now);
+
+    for(const s of state.active) drawSpeech(s);
+  }
+
+  function loop(now){
+    update(now);
+    render(now);
+    requestAnimationFrame(loop);
+  }
+
+  const PRESET_TEXT = '生きるべきか、死ぬべきか、それが問題だ\n友よ、ローマ市民よ、同胞よ、どうか耳を貸してくれ\nこの世はすべて舞台、人はみな役者にすぎない\n地獄とは他人のことだ\nきちんと向き合わねばならない\n知らざあ言って聞かせやしょう\n問われて名乗るもおこがましいが\nこいつぁ春から縁起がええわぇ\n鍵は閉めなくていい、どうせ出ていくのは私だから\n拍手って、赦しの代わりにはならないんだよ\nそういうところだけ、昔のままだね\n終電はもうない\n世界を変える話じゃないよ\n好きだった、たぶん今も\n私たち、不幸になるために会ったわけじゃない\n待って\n昔の話していい？\n今日の私は強いよ\n別れ話って、もっと派手だと思ってた\n夢を諦めたんじゃない、順番を、譲っただけ\nあなたの「いつか」って、だいたい私がいない日だね\nごめん\n欲しかったの\n他人みたいに優しくしないで\n私はちゃんと見てたよ\n弱くてもいいじゃない\n先に食べてていいよ\n今日のコーヒー、なんか妙に当たりじゃない？\nその服いいね\nそれ私も気になってた\nまあそういう日もあるか\n返事ないけどたぶん起きてるよね\n笑うほどじゃないけどちょっと好きだな\n今日の夕飯どうする？\n目覚ましって裏切るよね\n部活ある日は、帰り道までちょっと青春っぽい\nじゃあまた明日、って言えるのけっこう好き\nこういう日も嫌いじゃないけど\n無理に元気なふりしなくていい年齢でしょう、もう\nお疲れ様ー！\n弁当、また唐揚げ？\n駅まで送るよ\nずっと既読だけついてるの何\nしょまごって…何？\n体育のあとに６限って無理じゃない？\nいや、今ちょっと迷ったでしょ\nすべての幸福な家庭は似ている\n大きいものと小さいものがある\nぼくは透明人間だ\n恥の多い生涯を送って来ました\nメロスは激怒した\n智に働けば角が立つ\nそれは最高の時代であり、最悪の時代でもあった';
+
+  function startPreset(){
+    textInput.value = PRESET_TEXT;
+    const checked = validateInput(PRESET_TEXT);
+    if(!checked.ok){
+      message.textContent = checked.message;
+      return;
+    }
+    state.lines = checked.lines;
+    state.backdropText = backdropInput.value.trim();
+    state.backdropActors = createBackdropActors(state.backdropText);
+    refillBag();
+    state.active = [];
+    state.phase = "ready";
+    message.textContent = "";
+    inputScreen.style.display = "none";
+    playScreen.style.display = "block";
+  }
+
+  storeButton.addEventListener("click", storeLines);
+  presetButton.addEventListener("click", startPreset);
+  textInput.addEventListener("keydown", (e) => {
+    if((e.ctrlKey || e.metaKey) && e.key === "Enter"){
+      e.preventDefault();
+      storeLines();
+    }
+  });
+
+  canvas.addEventListener("mousedown", (e) => {
+    if(state.phase !== "ready") return;
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const r = state.showRect;
+    if(!r || (mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h)){
+      beginPlay(performance.now());
+    }
+  });
+
+  canvas.addEventListener("touchstart", (e) => {
+    if(state.phase !== "ready") return;
+    const rect = canvas.getBoundingClientRect();
+    const touch = e.touches[0];
+    const mx = touch.clientX - rect.left;
+    const my = touch.clientY - rect.top;
+    const r = state.showRect;
+    if(!r || (mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h)){
+      beginPlay(performance.now());
+    }
+  }, { passive:true });
+
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
